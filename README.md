@@ -1,6 +1,6 @@
 # SecureLens
 
-** What does SecureLens solve? ** 
+**What does SecureLens solve?** 
   > SOC Analysts spend hours manually looking through logs to find what security event occured.
   > With SecureLens, we can use AI to summarize these logs and give a detailed report on what happened.
 
