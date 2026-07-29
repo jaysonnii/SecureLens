@@ -1,5 +1,7 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
 
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5 MB
+
 app = FastAPI(
     title="SecureLens API",
     description="Backend API for analyzing security logs.",
@@ -11,6 +13,13 @@ app = FastAPI(
 def root():
     return {"message": "Welcome to SecureLens API!"}
 
+@app.get("/health")
+def health_check():
+    return {
+        "status": "healthy",
+        "service": "SecureLens API",
+        "version": "0.2.0",
+    }
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -26,6 +35,12 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
     contents = await file.read()
+
+    if len(contents) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail="File is too large. Maximum allowed size is 5 MB.",
+    )
 
     if not contents:
         raise HTTPException(
