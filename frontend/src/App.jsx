@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 const API_URL =
@@ -6,6 +6,12 @@ const API_URL =
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ["txt", "log", "csv", "json"];
+
+const API_STATUS_LABELS = {
+  checking: "Checking API",
+  online: "API Online",
+  offline: "API Offline",
+};
 
 function getExtension(filename) {
   return filename.split(".").pop()?.toLowerCase() ?? "";
@@ -31,6 +37,37 @@ function App() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [apiStatus, setApiStatus] = useState("checking");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function checkApiHealth() {
+      try {
+        const response = await fetch(`${API_URL}/health`, {
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("API health check failed.");
+        }
+
+        const data = await response.json();
+
+        setApiStatus(
+          data.status === "healthy" ? "online" : "offline"
+        );
+      } catch (requestError) {
+        if (requestError.name !== "AbortError") {
+          setApiStatus("offline");
+        }
+      }
+    }
+
+    checkApiHealth();
+
+    return () => controller.abort();
+  }, []);
 
   function validateFile(file) {
     if (!file) {
@@ -103,7 +140,9 @@ function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "The log could not be analyzed.");
+        throw new Error(
+          data.detail || "The log could not be analyzed."
+        );
       }
 
       setAnalysisResult(data);
@@ -127,7 +166,8 @@ function App() {
     }
   }
 
-  const riskLevel = analysisResult?.analysis?.risk_level ?? "";
+  const riskLevel =
+    analysisResult?.analysis?.risk_level ?? "";
 
   return (
     <div className="app-shell">
@@ -141,22 +181,32 @@ function App() {
           </div>
         </div>
 
-        <div className="api-status">
-          <span className="status-dot" />
-          Analysis API
+        <div
+          className={`api-status ${apiStatus}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className="status-dot"
+            aria-hidden="true"
+          />
+
+          {API_STATUS_LABELS[apiStatus]}
         </div>
       </header>
 
       <main className="dashboard">
         <section className="hero">
-          <span className="eyebrow">AI-ready security analysis</span>
+          <span className="eyebrow">
+            AI-ready security analysis
+          </span>
 
           <h2>Turn security logs into clear findings.</h2>
 
           <p>
-            Upload a log file to identify suspicious activity, calculate
-            risk, map MITRE ATT&amp;CK techniques, and receive recommended
-            investigation steps.
+            Upload a log file to identify suspicious activity,
+            calculate risk, map MITRE ATT&amp;CK techniques, and
+            receive recommended investigation steps.
           </p>
         </section>
 
@@ -173,7 +223,9 @@ function App() {
           </div>
 
           <div
-            className={`drop-zone ${isDragging ? "dragging" : ""}`}
+            className={`drop-zone ${
+              isDragging ? "dragging" : ""
+            }`}
             onDragEnter={() => setIsDragging(true)}
             onDragLeave={() => setIsDragging(false)}
             onDragOver={(event) => event.preventDefault()}
@@ -195,7 +247,9 @@ function App() {
             <button
               className="secondary-button"
               type="button"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() =>
+                fileInputRef.current?.click()
+              }
             >
               Choose file
             </button>
@@ -205,7 +259,9 @@ function App() {
             <div className="selected-file">
               <div>
                 <strong>{selectedFile.name}</strong>
-                <span>{formatFileSize(selectedFile.size)}</span>
+                <span>
+                  {formatFileSize(selectedFile.size)}
+                </span>
               </div>
 
               <button type="button" onClick={clearFile}>
@@ -214,7 +270,9 @@ function App() {
             </div>
           )}
 
-          {error && <div className="error-message">{error}</div>}
+          {error && (
+            <div className="error-message">{error}</div>
+          )}
 
           <button
             className="primary-button"
@@ -230,11 +288,16 @@ function App() {
           <section className="results">
             <div className="results-heading">
               <div>
-                <p className="section-label">Analysis complete</p>
+                <p className="section-label">
+                  Analysis complete
+                </p>
+
                 <h3>{analysisResult.filename}</h3>
               </div>
 
-              <span className={`risk-badge ${riskLevel.toLowerCase()}`}>
+              <span
+                className={`risk-badge ${riskLevel.toLowerCase()}`}
+              >
                 {riskLevel} risk
               </span>
             </div>
@@ -242,6 +305,7 @@ function App() {
             <div className="summary-grid">
               <article className="summary-card score-card">
                 <span>Risk score</span>
+
                 <strong>
                   {analysisResult.analysis.risk_score}
                   <small>/100</small>
@@ -250,18 +314,27 @@ function App() {
 
               <article className="summary-card">
                 <span>Risk level</span>
-                <strong>{analysisResult.analysis.risk_level}</strong>
+
+                <strong>
+                  {analysisResult.analysis.risk_level}
+                </strong>
               </article>
 
               <article className="summary-card">
                 <span>Total findings</span>
-                <strong>{analysisResult.analysis.total_findings}</strong>
+
+                <strong>
+                  {analysisResult.analysis.total_findings}
+                </strong>
               </article>
 
               <article className="summary-card">
                 <span>File size</span>
+
                 <strong>
-                  {formatFileSize(analysisResult.size_bytes)}
+                  {formatFileSize(
+                    analysisResult.size_bytes
+                  )}
                 </strong>
               </article>
             </div>
@@ -269,12 +342,16 @@ function App() {
             <div className="panel findings-panel">
               <div className="panel-heading">
                 <div>
-                  <p className="section-label">Detected activity</p>
+                  <p className="section-label">
+                    Detected activity
+                  </p>
+
                   <h3>Security findings</h3>
                 </div>
               </div>
 
-              {analysisResult.analysis.findings.length === 0 ? (
+              {analysisResult.analysis.findings.length ===
+              0 ? (
                 <div className="empty-state">
                   No suspicious indicators were detected.
                 </div>
@@ -307,12 +384,16 @@ function App() {
                         {finding.mitre_attack && (
                           <div className="finding-row">
                             <span>MITRE ATT&amp;CK</span>
-                            <strong>{finding.mitre_attack}</strong>
+
+                            <strong>
+                              {finding.mitre_attack}
+                            </strong>
                           </div>
                         )}
 
                         <div className="recommendation">
                           <span>Recommended action</span>
+
                           <p>{finding.recommendation}</p>
                         </div>
                       </article>
@@ -325,7 +406,10 @@ function App() {
             <div className="panel preview-panel">
               <div className="panel-heading">
                 <div>
-                  <p className="section-label">Uploaded content</p>
+                  <p className="section-label">
+                    Uploaded content
+                  </p>
+
                   <h3>Log preview</h3>
                 </div>
               </div>

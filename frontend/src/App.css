@@ -4,6 +4,7 @@
 
 .topbar {
   align-items: center;
+  backdrop-filter: blur(16px);
   background: rgba(7, 15, 29, 0.88);
   border-bottom: 1px solid rgba(148, 163, 184, 0.16);
   display: flex;
@@ -11,7 +12,6 @@
   padding: 18px max(24px, calc((100vw - 1180px) / 2));
   position: sticky;
   top: 0;
-  backdrop-filter: blur(16px);
   z-index: 10;
 }
 
@@ -55,11 +55,25 @@
 }
 
 .status-dot {
-  background: #22c55e;
+  background: #64748b;
   border-radius: 999px;
-  box-shadow: 0 0 12px rgba(34, 197, 94, 0.8);
   height: 8px;
   width: 8px;
+}
+
+.api-status.checking .status-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.8);
+}
+
+.api-status.online .status-dot {
+  background: #22c55e;
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.8);
+}
+
+.api-status.offline .status-dot {
+  background: #ef4444;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.8);
 }
 
 .dashboard {
@@ -110,8 +124,8 @@
 .finding-header {
   align-items: center;
   display: flex;
-  justify-content: space-between;
   gap: 20px;
+  justify-content: space-between;
 }
 
 .panel-heading h3,
