@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
-      - feature/backend-foundation
   pull_request:
     branches:
       - main
+
+permissions:
+  contents: read
 
 jobs:
   test:
