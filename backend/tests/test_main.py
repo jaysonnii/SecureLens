@@ -22,7 +22,7 @@ def test_health_check():
     assert response.json() == {
         "status": "healthy",
         "service": "SecureLens API",
-        "version": "0.2.0",
+        "version": "0.3.0",
     }
 
 
@@ -47,6 +47,11 @@ def test_valid_log_upload():
     assert data["filename"] == "security.log"
     assert data["analysis"]["risk_level"] == "High"
     assert data["analysis"]["total_findings"] == 4
+    assert data["ai_summary"]["status"] == "disabled"
+    assert data["ai_summary"]["provider"] == "local"
+    assert data["ai_summary"]["model"] is None
+    assert data["ai_summary"]["summary"]
+    assert len(data["ai_summary"]["priority_actions"]) <= 3
 
 
 def test_unsupported_file_type():

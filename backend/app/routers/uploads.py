@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE
+from app.services.ai_summary import generate_ai_summary
 from app.services.analyzer import analyze_log
 
 
@@ -46,11 +47,12 @@ async def upload_file(file: UploadFile = File(...)):
         ) from error
 
     analysis = analyze_log(decoded_text)
-
+    ai_summary = generate_ai_summary(analysis)
     return {
         "filename": filename,
         "content_type": file.content_type,
         "size_bytes": len(contents),
         "preview": decoded_text[:500],
         "analysis": analysis,
+        "ai_summary": ai_summary,
     }
