@@ -319,6 +319,63 @@ button {
   color: #22d3ee;
 }
 
+.ai-summary-panel {
+  background:
+    linear-gradient(
+      135deg,
+      rgba(34, 211, 238, 0.07),
+      rgba(37, 99, 235, 0.07)
+    ),
+    rgba(15, 23, 42, 0.76);
+  border-color: rgba(34, 211, 238, 0.24);
+  margin-top: 20px;
+}
+
+.ai-provider {
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: 999px;
+  color: #67e8f9;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+}
+
+.ai-summary-text {
+  color: #cbd5e1;
+  line-height: 1.75;
+  margin: 22px 0 0;
+}
+
+.priority-actions {
+  border-top: 1px solid rgba(148, 163, 184, 0.14);
+  margin-top: 22px;
+  padding-top: 20px;
+}
+
+.priority-actions h4 {
+  font-size: 15px;
+  margin: 0 0 14px;
+}
+
+.priority-actions ol {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 22px;
+}
+
+.priority-actions li {
+  color: #cbd5e1;
+  line-height: 1.6;
+  padding-left: 5px;
+}
+
+.priority-actions li::marker {
+  color: #22d3ee;
+  font-weight: 700;
+}
+
 .findings-panel,
 .preview-panel {
   margin-top: 20px;
