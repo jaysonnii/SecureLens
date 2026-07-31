@@ -168,6 +168,8 @@ function App() {
 
   const riskLevel =
     analysisResult?.analysis?.risk_level ?? "";
+    
+  const aiSummary = analysisResult?.ai_summary;
 
   return (
     <div className="app-shell">
@@ -332,13 +334,52 @@ function App() {
                 <span>File size</span>
 
                 <strong>
-                  {formatFileSize(
-                    analysisResult.size_bytes
-                  )}
+                  {formatFileSize(analysisResult.size_bytes)}
                 </strong>
               </article>
             </div>
 
+            {aiSummary && (
+              <div className="panel ai-summary-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="section-label">
+                      Analyst summary
+                    </p>
+
+                    <h3>Security overview</h3>
+                  </div>
+
+                  <span className="ai-provider">
+                    {aiSummary.provider === "openai"
+                      ? "AI generated"
+                      : "Local analysis"}
+                  </span>
+                </div>
+
+                <p className="ai-summary-text">
+                  {aiSummary.summary}
+                </p>
+
+                {Array.isArray(aiSummary.priority_actions) &&
+                  aiSummary.priority_actions.length > 0 && (
+                    <div className="priority-actions">
+                      <h4>Priority actions</h4>
+
+                      <ol>
+                        {aiSummary.priority_actions.map(
+                          (action, index) => (
+                            <li key={`${action}-${index}`}>
+                              {action}
+                            </li>
+                          )
+                        )}
+                      </ol>
+                    </div>
+                  )}
+              </div>
+            )}
+            
             <div className="panel findings-panel">
               <div className="panel-heading">
                 <div>
