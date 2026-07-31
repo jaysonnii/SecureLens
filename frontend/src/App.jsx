@@ -391,6 +391,22 @@ function App() {
                           </div>
                         )}
 
+                        {Array.isArray(finding.evidence) &&
+                          finding.evidence.length > 0 && (
+                            <div className="evidence">
+                              <span>Evidence</span>
+
+                              <ul className="evidence-list">
+                                {finding.evidence.map((line, evidenceIndex) => (
+                                  <li key={`${finding.type}-evidence-${evidenceIndex}`}>
+                                    <code>{line}</code>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                        
                         <div className="recommendation">
                           <span>Recommended action</span>
 
