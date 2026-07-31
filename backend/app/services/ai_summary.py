@@ -2,11 +2,7 @@ import json
 
 from openai import OpenAI
 
-from app.config import (
-    AI_SUMMARY_ENABLED,
-    OPENAI_API_KEY,
-    OPENAI_MODEL,
-)
+import app.config as config
 
 
 MAX_PRIORITY_ACTIONS = 3
@@ -132,20 +128,20 @@ def _build_ai_input(analysis: dict) -> str:
 def generate_ai_summary(analysis: dict) -> dict:
     fallback = _build_local_summary(analysis)
 
-    if not AI_SUMMARY_ENABLED:
+    if not config.AI_SUMMARY_ENABLED:
         return fallback
 
-    if not OPENAI_API_KEY:
+    if not config.OPENAI_API_KEY:
         return _build_local_summary(
             analysis,
             status="missing_api_key",
         )
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = OpenAI(api_key=config.OPENAI_API_KEY)
 
         response = client.responses.create(
-            model=OPENAI_MODEL,
+            model=config.OPENAI_MODEL,
             instructions=(
                 "You are a security operations center analyst. "
                 "Summarize only the supplied deterministic "
@@ -170,7 +166,7 @@ def generate_ai_summary(analysis: dict) -> dict:
         return {
             "status": "generated",
             "provider": "openai",
-            "model": OPENAI_MODEL,
+            "model": config.OPENAI_MODEL,
             "summary": summary,
             "priority_actions": (
                 fallback["priority_actions"]
