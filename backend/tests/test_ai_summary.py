@@ -217,8 +217,14 @@ def test_enabled_ai_returns_generated_summary(
 
 
 def test_openai_failure_returns_local_fallback(
+    caplog,
     monkeypatch,
 ):
+    caplog.set_level(
+        "WARNING",
+        logger=ai_summary_service.__name__,
+    )
+
     monkeypatch.setattr(
         ai_summary_service.config,
         "AI_SUMMARY_ENABLED",
@@ -270,3 +276,73 @@ def test_openai_failure_returns_local_fallback(
     assert result["priority_actions"] == [
         "Review the source IP address."
     ]
+
+    assert (
+        "OpenAI summary generation failed"
+        in caplog.text
+    )
+    assert "RuntimeError" in caplog.text
+
+    assert (
+        "Simulated API failure"
+        not in caplog.text
+    )
+    assert "test-key" not in caplog.text
+
+def test_empty_openai_response_logs_fallback(
+    caplog,
+    monkeypatch,
+):
+    caplog.set_level(
+        "WARNING",
+        logger=ai_summary_service.__name__,
+    )
+
+    monkeypatch.setattr(
+        ai_summary_service.config,
+        "AI_SUMMARY_ENABLED",
+        True,
+    )
+    monkeypatch.setattr(
+        ai_summary_service.config,
+        "OPENAI_API_KEY",
+        "test-key",
+    )
+
+    class EmptyResponses:
+        async def create(self, **kwargs):
+            return SimpleNamespace(
+                output_text="   "
+            )
+
+    class EmptyClient:
+        def __init__(self, api_key):
+            self.responses = EmptyResponses()
+
+    monkeypatch.setattr(
+        ai_summary_service,
+        "AsyncOpenAI",
+        EmptyClient,
+    )
+
+    analysis = {
+        "risk_score": 0,
+        "risk_level": "Low",
+        "total_findings": 0,
+        "findings": [],
+    }
+
+    result = asyncio.run(
+        generate_ai_summary(analysis)
+    )
+
+    assert result["status"] == "fallback"
+    assert result["provider"] == "local"
+    assert result["summary"]
+
+    assert (
+        "OpenAI returned an empty summary"
+        in caplog.text
+    )
+
+    assert "test-key" not in caplog.text
