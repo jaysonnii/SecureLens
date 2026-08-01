@@ -1,9 +1,12 @@
 import json
+import logging
 
 from openai import AsyncOpenAI
 
 import app.config as config
 
+
+logger = logging.getLogger(__name__)
 
 MAX_PRIORITY_ACTIONS = 3
 
@@ -160,6 +163,11 @@ async def generate_ai_summary(analysis: dict) -> dict:
         summary = response.output_text.strip()
 
         if not summary:
+            logger.warning(
+                "OpenAI returned an empty summary; "
+                "using local fallback."
+            )
+
             return _build_local_summary(
                 analysis,
                 status="fallback",
@@ -175,7 +183,15 @@ async def generate_ai_summary(analysis: dict) -> dict:
             ),
         }
 
-    except Exception:
+    except Exception as error:
+        logger.warning(
+            (
+                "OpenAI summary generation failed; "
+                "using local fallback. error_type=%s"
+            ),
+            type(error).__name__,
+        )
+
         return _build_local_summary(
             analysis,
             status="fallback",
