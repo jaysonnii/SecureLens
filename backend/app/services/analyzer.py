@@ -185,6 +185,7 @@ def analyze_log(log_text: str) -> dict:
 
     findings = []
     risk_score = 0
+    score_breakdown = []
 
     failed_login_count = len(failed_matches)
 
@@ -207,7 +208,21 @@ def analyze_log(log_text: str) -> dict:
             }
         )
 
-        risk_score += min(failed_login_count * 10, 40)
+        failed_login_points = min(
+            failed_login_count * 10,
+            40,
+        )
+        risk_score += failed_login_points
+        score_breakdown.append(
+            {
+                "finding_type": "Failed Login Attempts",
+                "points": failed_login_points,
+                "reason": (
+                    f"{failed_login_count} failed login attempt(s) "
+                    "at 10 points each, capped at 40."
+                ),
+            }
+        )
 
     if powershell_matches:
         if suspicious_powershell_matches:
@@ -228,6 +243,18 @@ def analyze_log(log_text: str) -> dict:
             )
 
             risk_score += 40
+            score_breakdown.append(
+                {
+                    "finding_type": (
+                        "Suspicious PowerShell Activity"
+                    ),
+                    "points": 40,
+                    "reason": (
+                        "Suspicious PowerShell indicators were "
+                        "detected."
+                    ),
+                }
+            )
         else:
             findings.append(
                 {
@@ -246,6 +273,16 @@ def analyze_log(log_text: str) -> dict:
             )
 
             risk_score += 25
+            score_breakdown.append(
+                {
+                    "finding_type": "PowerShell Activity",
+                    "points": 25,
+                    "reason": (
+                        "PowerShell execution was detected without "
+                        "a known high-risk command indicator."
+                    ),
+                }
+            )
 
     if administrator_matches:
         findings.append(
@@ -264,6 +301,18 @@ def analyze_log(log_text: str) -> dict:
         )
 
         risk_score += 10
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Administrator Account Activity"
+                ),
+                "points": 10,
+                "reason": (
+                    "Administrator or privileged account activity "
+                    "was detected."
+                ),
+            }
+        )
 
     if _has_success_after_failures(
         failed_matches,
@@ -287,6 +336,18 @@ def analyze_log(log_text: str) -> dict:
         )
 
         risk_score += 30
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Login After Multiple Failures"
+                ),
+                "points": 30,
+                "reason": (
+                    "A successful login occurred after at least "
+                    "three failed attempts."
+                ),
+            }
+        )
 
     if cleared_log_matches:
         findings.append(
@@ -309,8 +370,21 @@ def analyze_log(log_text: str) -> dict:
         )
 
         risk_score += 40
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Windows Security Log Cleared"
+                ),
+                "points": 40,
+                "reason": (
+                    "Windows security or audit log clearing "
+                    "activity was detected."
+                ),
+            }
+        )
 
-    risk_score = min(risk_score, 100)
+    score_before_cap = risk_score
+    risk_score = min(score_before_cap, 100)
 
     if risk_score >= 70:
         risk_level = "High"
@@ -321,6 +395,9 @@ def analyze_log(log_text: str) -> dict:
 
     return {
         "risk_score": risk_score,
+        "score_before_cap": score_before_cap,
+        "score_cap": 100,
+        "score_breakdown": score_breakdown,
         "risk_level": risk_level,
         "total_findings": len(findings),
         "findings": findings,

@@ -171,6 +171,9 @@ function App() {
     
   const aiSummary = analysisResult?.ai_summary;
 
+  const scoreBreakdown =
+    analysisResult?.analysis?.score_breakdown ?? [];
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -338,6 +341,86 @@ function App() {
                 </strong>
               </article>
             </div>
+
+
+            {scoreBreakdown.length > 0 && (
+              <div className="panel score-breakdown-panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="section-label">
+                      Risk calculation
+                    </p>
+
+                    <h3>Why this score?</h3>
+                  </div>
+
+                  <span className="score-total">
+                    {
+                      analysisResult.analysis
+                        .score_before_cap
+                    }{" "}
+                    points detected
+                  </span>
+                </div>
+
+                <div className="score-breakdown-list">
+                  {scoreBreakdown.map((item) => (
+                    <div
+                      className="score-breakdown-row"
+                      key={item.finding_type}
+                    >
+                      <div>
+                        <strong>
+                          {item.finding_type}
+                        </strong>
+
+                        <p>{item.reason}</p>
+                      </div>
+
+                      <span>+{item.points}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="score-breakdown-footer">
+                  <div>
+                    <span>Score before cap</span>
+
+                    <strong>
+                      {
+                        analysisResult.analysis
+                          .score_before_cap
+                      }
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Final score</span>
+
+                    <strong>
+                      {analysisResult.analysis.risk_score}
+                      <small>
+                        /{
+                          analysisResult.analysis
+                            .score_cap
+                        }
+                      </small>
+                    </strong>
+                  </div>
+                </div>
+
+                {
+                  analysisResult.analysis.score_before_cap >
+                    analysisResult.analysis.score_cap && (
+                    <p className="score-cap-note">
+                      SecureLens limits the final risk
+                      score to{" "}
+                      {analysisResult.analysis.score_cap}.
+                    </p>
+                  )
+                }
+              </div>
+            )}
 
             {aiSummary && (
               <div className="panel ai-summary-panel">

@@ -20,6 +20,9 @@ def test_benign_log_returns_low_risk():
 
     assert result == {
         "risk_score": 0,
+        "score_before_cap": 0,
+        "score_cap": 100,
+        "score_breakdown": [],
         "risk_level": "Low",
         "total_findings": 0,
         "findings": [],
@@ -146,4 +149,39 @@ def test_evidence_is_unique_and_limited_to_three_lines():
         "Failed login from 10.0.0.1",
         "Failed login from 10.0.0.2",
         "Failed login from 10.0.0.3",
+    ]
+
+def test_score_breakdown_explains_contributions_and_cap():
+    result = analyze_log(
+        """
+        Event ID: 4625 Failed logon for user jsmith
+        Event ID: 4625 Failed logon for user jsmith
+        Event ID: 4625 Failed logon for user jsmith
+        Event ID: 4625 Failed logon for user jsmith
+        Event ID: 4625 Failed logon for user jsmith
+        Event ID: 4624 Successful logon for user jsmith
+        Event ID: 4104 PowerShell.exe -EncodedCommand AAAA
+        Administrator account activity detected
+        Event ID: 1102 The audit log was cleared
+        """
+    )
+
+    assert result["score_before_cap"] == 160
+    assert result["risk_score"] == 100
+    assert result["score_cap"] == 100
+
+    assert sum(
+        item["points"]
+        for item in result["score_breakdown"]
+    ) == 160
+
+    assert [
+        item["finding_type"]
+        for item in result["score_breakdown"]
+    ] == [
+        "Failed Login Attempts",
+        "Suspicious PowerShell Activity",
+        "Administrator Account Activity",
+        "Login After Multiple Failures",
+        "Windows Security Log Cleared",
     ]
