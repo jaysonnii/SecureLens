@@ -209,6 +209,10 @@ With environment variables:
 docker run --rm -p 8000:8000 --env-file backend/.env securelens-backend
 ```
 
+## Deployment
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full-stack Docker Compose deployment and production configuration.
+
 ## Testing
 
 ```powershell

@@ -1,0 +1,57 @@
+﻿name: Container Build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Validate Compose configuration
+        run: docker compose config
+
+      - name: Build containers
+        run: docker compose build
+
+      - name: Start containers
+        run: docker compose up -d --wait --wait-timeout 90
+
+      - name: Smoke test full stack
+        run: |
+          curl \
+            --fail \
+            --retry 20 \
+            --retry-delay 2 \
+            http://127.0.0.1:8080/
+
+          curl \
+            --fail \
+            --retry 20 \
+            --retry-delay 2 \
+            http://127.0.0.1:8080/api/health
+
+          curl \
+            --fail \
+            --form "file=@examples/sample-security.log" \
+            http://127.0.0.1:8080/api/upload \
+            | grep -q '"analysis"'
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down --volumes

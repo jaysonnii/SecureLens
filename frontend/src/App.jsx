@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 const API_URL =
-  import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+  import.meta.env.VITE_API_URL ??
+  (import.meta.env.PROD
+    ? "/api"
+    : "http://127.0.0.1:8000");
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ["txt", "log", "csv", "json"];

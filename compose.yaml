@@ -1,0 +1,45 @@
+name: securelens
+
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      APP_ENV: production
+      API_DOCS_ENABLED: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      AI_SUMMARY_ENABLED: ${AI_SUMMARY_ENABLED:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5-mini}
+    expose:
+      - "8000"
+    init: true
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    networks:
+      - securelens
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: /api
+    ports:
+      - "${SECURELENS_BIND_ADDRESS:-127.0.0.1}:${SECURELENS_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    init: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - securelens
+
+networks:
+  securelens:
+    driver: bridge
