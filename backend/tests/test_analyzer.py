@@ -185,3 +185,61 @@ def test_score_breakdown_explains_contributions_and_cap():
         "Login After Multiple Failures",
         "Windows Security Log Cleared",
     ]
+
+def test_login_sequence_does_not_mix_users_or_ips():
+    result = analyze_log(
+        """
+        Event ID: 4625 Failed logon for user alice Source IP: 10.0.0.1
+        Event ID: 4625 Failed logon for user alice Source IP: 10.0.0.1
+        Event ID: 4625 Failed logon for user bob Source IP: 10.0.0.2
+        Event ID: 4624 Successful logon for user alice Source IP: 10.0.0.1
+        """
+    )
+
+    finding_types = {
+        finding["type"]
+        for finding in result["findings"]
+    }
+
+    assert result["risk_score"] == 30
+    assert result["total_findings"] == 1
+    assert "Failed Login Attempts" in finding_types
+    assert (
+        "Login After Multiple Failures"
+        not in finding_types
+    )
+
+
+def test_login_sequence_uses_actual_success_evidence():
+    result = analyze_log(
+        """
+        10:00 Event ID: 4624 Successful logon for user alice Source IP: 10.0.0.1
+        10:01 Event ID: 4625 Failed logon for user alice Source IP: 10.0.0.1
+        10:02 Event ID: 4625 Failed logon for user alice Source IP: 10.0.0.1
+        10:03 Event ID: 4625 Failed logon for user alice Source IP: 10.0.0.1
+        10:04 Event ID: 4624 Successful logon for user alice Source IP: 10.0.0.1
+        """
+    )
+
+    finding = get_finding(
+        result,
+        "Login After Multiple Failures",
+    )
+
+    assert result["risk_score"] == 60
+    assert result["total_findings"] == 2
+
+    assert finding["evidence"] == [
+        (
+            "10:02 Event ID: 4625 Failed logon "
+            "for user alice Source IP: 10.0.0.1"
+        ),
+        (
+            "10:03 Event ID: 4625 Failed logon "
+            "for user alice Source IP: 10.0.0.1"
+        ),
+        (
+            "10:04 Event ID: 4624 Successful logon "
+            "for user alice Source IP: 10.0.0.1"
+        ),
+    ]

@@ -71,6 +71,30 @@ EVENT_ID_PATTERNS = {
 }
 
 
+USER_PATTERNS = (
+    re.compile(
+        r"\bfor\s+user\s+([^\s,;]+)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        (
+            r"\b(?:user(?:name)?|account\s+name)"
+            r"\s*[:=]\s*([^\s,;]+)"
+        ),
+        re.IGNORECASE,
+    ),
+)
+
+SOURCE_IP_PATTERN = re.compile(
+    (
+        r"\b(?:source\s+ip|src(?:_ip)?|ip\s+address)"
+        r"\s*[:=]\s*"
+        r"((?:\d{1,3}\.){3}\d{1,3})\b"
+    ),
+    re.IGNORECASE,
+)
+
+
 def _line_matches(
     line: str,
     terms: tuple[str, ...] = (),
@@ -127,19 +151,95 @@ def _create_evidence(
     return evidence
 
 
-def _has_success_after_failures(
+def _extract_event_identity(
+    line: str,
+) -> tuple[str | None, str | None]:
+    username = None
+
+    for pattern in USER_PATTERNS:
+        username_match = pattern.search(line)
+
+        if username_match:
+            username = username_match.group(1).lower()
+            break
+
+    source_ip_match = SOURCE_IP_PATTERN.search(line)
+    source_ip = (
+        source_ip_match.group(1)
+        if source_ip_match
+        else None
+    )
+
+    return username, source_ip
+
+
+def _events_correlate(
+    failure_line: str,
+    success_line: str,
+) -> bool:
+    failure_user, failure_ip = (
+        _extract_event_identity(failure_line)
+    )
+    success_user, success_ip = (
+        _extract_event_identity(success_line)
+    )
+
+    matched_identifier = False
+
+    if failure_user and success_user:
+        if failure_user != success_user:
+            return False
+
+        matched_identifier = True
+
+    if failure_ip and success_ip:
+        if failure_ip != success_ip:
+            return False
+
+        matched_identifier = True
+
+    if matched_identifier:
+        return True
+
+    identifiers = (
+        failure_user,
+        failure_ip,
+        success_user,
+        success_ip,
+    )
+
+    return not any(identifiers)
+
+
+def _find_login_sequence(
     failed_matches: list[tuple[int, str]],
     successful_matches: list[tuple[int, str]],
-) -> bool:
-    if len(failed_matches) < 3:
-        return False
+) -> (
+    tuple[
+        list[tuple[int, str]],
+        tuple[int, str],
+    ]
+    | None
+):
+    for success_match in successful_matches:
+        success_index, success_line = success_match
 
-    third_failure_index = failed_matches[2][0]
+        matching_failures = [
+            failure_match
+            for failure_match in failed_matches
+            if (
+                failure_match[0] < success_index
+                and _events_correlate(
+                    failure_match[1],
+                    success_line,
+                )
+            )
+        ]
 
-    return any(
-        success_index > third_failure_index
-        for success_index, _ in successful_matches
-    )
+        if len(matching_failures) >= 3:
+            return matching_failures[-3:], success_match
+
+    return None
 
 
 def analyze_log(log_text: str) -> dict:
@@ -314,12 +414,19 @@ def analyze_log(log_text: str) -> dict:
             }
         )
 
-    if _has_success_after_failures(
+    login_sequence = _find_login_sequence(
         failed_matches,
         successful_matches,
-    ):
+    )
+
+    if login_sequence:
+        sequence_failures, sequence_success = (
+            login_sequence
+        )
+
         combined_matches = (
-            failed_matches[-3:] + successful_matches[:1]
+            sequence_failures[-2:]
+            + [sequence_success]
         )
 
         findings.append(
