@@ -1,6 +1,6 @@
 import json
 
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 import app.config as config
 
@@ -125,7 +125,7 @@ def _build_ai_input(analysis: dict) -> str:
     return json.dumps(payload, indent=2)
 
 
-def generate_ai_summary(analysis: dict) -> dict:
+async def generate_ai_summary(analysis: dict) -> dict:
     fallback = _build_local_summary(analysis)
 
     if not config.AI_SUMMARY_ENABLED:
@@ -138,9 +138,11 @@ def generate_ai_summary(analysis: dict) -> dict:
         )
 
     try:
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        client = AsyncOpenAI(
+            api_key=config.OPENAI_API_KEY
+        )
 
-        response = client.responses.create(
+        response = await client.responses.create(
             model=config.OPENAI_MODEL,
             instructions=(
                 "You are a security operations center analyst. "

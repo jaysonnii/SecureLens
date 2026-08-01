@@ -1,3 +1,4 @@
+import asyncio
 import json
 from types import SimpleNamespace
 
@@ -16,7 +17,9 @@ def test_disabled_ai_returns_local_summary():
         "findings": [],
     }
 
-    result = generate_ai_summary(analysis)
+    result = asyncio.run(
+        generate_ai_summary(analysis)
+    )
 
     assert result == {
         "status": "disabled",
@@ -59,7 +62,9 @@ def test_local_summary_includes_priority_actions():
         ],
     }
 
-    result = generate_ai_summary(analysis)
+    result = asyncio.run(
+        generate_ai_summary(analysis)
+    )
 
     assert result["status"] == "disabled"
     assert result["provider"] == "local"
@@ -124,7 +129,9 @@ def test_enabled_ai_without_key_returns_local_summary(
         "findings": [],
     }
 
-    result = generate_ai_summary(analysis)
+    result = asyncio.run(
+        generate_ai_summary(analysis)
+    )
 
     assert result["status"] == "missing_api_key"
     assert result["provider"] == "local"
@@ -153,7 +160,7 @@ def test_enabled_ai_returns_generated_summary(
     )
 
     class FakeResponses:
-        def create(self, **kwargs):
+        async def create(self, **kwargs):
             captured.update(kwargs)
 
             return SimpleNamespace(
@@ -170,7 +177,7 @@ def test_enabled_ai_returns_generated_summary(
 
     monkeypatch.setattr(
         ai_summary_service,
-        "OpenAI",
+        "AsyncOpenAI",
         FakeClient,
     )
 
@@ -191,7 +198,9 @@ def test_enabled_ai_returns_generated_summary(
         ],
     }
 
-    result = generate_ai_summary(analysis)
+    result = asyncio.run(
+        generate_ai_summary(analysis)
+    )
 
     assert result["status"] == "generated"
     assert result["provider"] == "openai"
@@ -222,7 +231,7 @@ def test_openai_failure_returns_local_fallback(
     )
 
     class FailingResponses:
-        def create(self, **kwargs):
+        async def create(self, **kwargs):
             raise RuntimeError("Simulated API failure")
 
     class FailingClient:
@@ -231,7 +240,7 @@ def test_openai_failure_returns_local_fallback(
 
     monkeypatch.setattr(
         ai_summary_service,
-        "OpenAI",
+        "AsyncOpenAI",
         FailingClient,
     )
 
@@ -250,7 +259,9 @@ def test_openai_failure_returns_local_fallback(
         ],
     }
 
-    result = generate_ai_summary(analysis)
+    result = asyncio.run(
+        generate_ai_summary(analysis)
+    )
 
     assert result["status"] == "fallback"
     assert result["provider"] == "local"
