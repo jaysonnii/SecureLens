@@ -1,11 +1,41 @@
+import asyncio
 from datetime import datetime
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.routers.uploads import (
+    FILE_READ_CHUNK_SIZE,
+    _read_limited_upload,
+)
 from main import MAX_FILE_SIZE, app
 
 
 client = TestClient(app)
+
+
+class TrackingUpload:
+    def __init__(self, content: bytes):
+        self.content = content
+        self.offset = 0
+        self.requested_sizes = []
+        self.bytes_returned = 0
+
+    async def read(self, size: int = -1) -> bytes:
+        self.requested_sizes.append(size)
+
+        if size < 0:
+            size = len(self.content) - self.offset
+
+        chunk = self.content[
+            self.offset:self.offset + size
+        ]
+
+        self.offset += len(chunk)
+        self.bytes_returned += len(chunk)
+
+        return chunk
 
 
 def test_root():
@@ -156,3 +186,76 @@ def test_upload_returns_capped_score_breakdown():
         "Login After Multiple Failures",
         "Windows Security Log Cleared",
     ]
+
+def test_limited_reader_stops_after_size_limit():
+    upload = TrackingUpload(
+        b"a" * (
+            MAX_FILE_SIZE
+            + FILE_READ_CHUNK_SIZE
+        )
+    )
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            _read_limited_upload(upload)
+        )
+
+    assert error.value.status_code == 413
+
+    assert upload.bytes_returned == (
+        MAX_FILE_SIZE + 1
+    )
+
+    assert upload.requested_sizes
+
+    assert max(upload.requested_sizes) <= (
+        FILE_READ_CHUNK_SIZE
+    )
+
+def test_limited_reader_accepts_exact_size_limit():
+    upload = TrackingUpload(
+        b"a" * MAX_FILE_SIZE
+    )
+
+    contents = asyncio.run(
+        _read_limited_upload(upload)
+    )
+
+    assert len(contents) == MAX_FILE_SIZE
+    assert upload.bytes_returned == MAX_FILE_SIZE
+
+    assert upload.requested_sizes
+
+    assert max(upload.requested_sizes) <= (
+        FILE_READ_CHUNK_SIZE
+    )
+
+
+def test_limited_reader_stops_after_size_limit():
+    upload = TrackingUpload(
+        b"a" * (
+            MAX_FILE_SIZE
+            + FILE_READ_CHUNK_SIZE
+        )
+    )
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(
+            _read_limited_upload(upload)
+        )
+
+    assert error.value.status_code == 413
+    assert error.value.detail == (
+        "File is too large. Maximum allowed "
+        "size is 5 MB."
+    )
+
+    assert upload.bytes_returned == (
+        MAX_FILE_SIZE + 1
+    )
+
+    assert upload.requested_sizes
+
+    assert max(upload.requested_sizes) <= (
+        FILE_READ_CHUNK_SIZE
+    )
