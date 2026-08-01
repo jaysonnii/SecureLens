@@ -77,7 +77,7 @@ async def upload_file(file: UploadFile = File(...)):
         ) from error
 
     analysis = analyze_log(decoded_text)
-    ai_summary = generate_ai_summary(analysis)
+    ai_summary = await generate_ai_summary(analysis)
     return {
         "analyzed_at": (
             datetime.now(timezone.utc)
