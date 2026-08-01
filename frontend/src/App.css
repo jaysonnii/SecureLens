@@ -904,3 +904,30 @@ input:focus-visible {
     text-align: left;
   }
 }
+
+/* Analysis workflow */
+
+.results-actions {
+  display: flex;
+  align-items: flex-end;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analysis-time {
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+
+.results-actions .secondary-button {
+  padding: 8px 13px;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .results-actions {
+    align-items: flex-start;
+    width: 100%;
+  }
+}

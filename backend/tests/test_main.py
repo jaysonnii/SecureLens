@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 
 from main import MAX_FILE_SIZE, app
@@ -45,6 +47,12 @@ def test_valid_log_upload():
     data = response.json()
 
     assert data["filename"] == "security.log"
+    assert data["analyzed_at"].endswith("Z")
+
+    datetime.fromisoformat(
+        data["analyzed_at"].replace("Z", "+00:00")
+    )
+
     analysis = data["analysis"]
 
     assert analysis["risk_score"] == 95
