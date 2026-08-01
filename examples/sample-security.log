@@ -1,0 +1,8 @@
+2026-08-01T14:01:03Z Event ID: 4625 Username=jsmith Source IP=192.0.2.10 Failed login
+2026-08-01T14:01:09Z Event ID: 4625 Username=jsmith Source IP=192.0.2.10 Failed login
+2026-08-01T14:01:16Z Event ID: 4625 Username=jsmith Source IP=192.0.2.10 Failed login
+2026-08-01T14:01:25Z Event ID: 4625 Username=jsmith Source IP=192.0.2.10 Failed login
+2026-08-01T14:02:01Z Event ID: 4624 Username=jsmith Source IP=192.0.2.10 Successful login
+2026-08-01T14:03:44Z Event ID: 4104 Username=jsmith powershell.exe -EncodedCommand U2ltdWxhdGVkLUNvbW1hbmQ=
+2026-08-01T14:05:12Z Administrator account activity detected for Username=administrator
+2026-08-01T14:06:30Z Event ID: 1102 Username=administrator The Windows security log was cleared
