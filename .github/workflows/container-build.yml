@@ -1,4 +1,4 @@
-name: Container Build
+﻿name: Container Build
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
         run: docker compose build
 
       - name: Start containers
-        run: docker compose up -d
+        run: docker compose up -d --wait --wait-timeout 90
 
       - name: Smoke test full stack
         run: |
