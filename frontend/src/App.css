@@ -506,6 +506,129 @@ button {
   color: var(--accent);
 }
 
+/* Risk score explanation */
+
+.score-breakdown-panel {
+  margin-top: 20px;
+}
+
+.score-total {
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+
+.score-breakdown-list {
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.score-breakdown-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+
+  padding: 17px 0;
+
+  border-bottom: 1px solid var(--border);
+}
+
+.score-breakdown-row > div {
+  min-width: 0;
+}
+
+.score-breakdown-row strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.score-breakdown-row p {
+  margin: 6px 0 0;
+
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.score-breakdown-row > span {
+  flex: 0 0 auto;
+
+  color: var(--accent);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.score-breakdown-footer {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+
+  margin-top: 18px;
+
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.score-breakdown-footer > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+
+  padding: 15px 17px;
+}
+
+.score-breakdown-footer > div + div {
+  border-left: 1px solid var(--border);
+}
+
+.score-breakdown-footer span {
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.score-breakdown-footer strong {
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 19px;
+  font-weight: 500;
+}
+
+.score-breakdown-footer small {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.score-cap-note {
+  margin: 13px 0 0;
+
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 620px) {
+  .score-breakdown-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .score-breakdown-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .score-breakdown-footer > div + div {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
+}
+
 /* Analyst summary */
 
 .ai-summary-panel {

@@ -45,8 +45,19 @@ def test_valid_log_upload():
     data = response.json()
 
     assert data["filename"] == "security.log"
-    assert data["analysis"]["risk_level"] == "High"
-    assert data["analysis"]["total_findings"] == 4
+    analysis = data["analysis"]
+
+    assert analysis["risk_score"] == 95
+    assert analysis["score_before_cap"] == 95
+    assert analysis["score_cap"] == 100
+    assert analysis["risk_level"] == "High"
+    assert analysis["total_findings"] == 4
+    assert len(analysis["score_breakdown"]) == 4
+
+    assert sum(
+        item["points"]
+        for item in analysis["score_breakdown"]
+    ) == analysis["score_before_cap"]
     assert data["ai_summary"]["status"] == "disabled"
     assert data["ai_summary"]["provider"] == "local"
     assert data["ai_summary"]["model"] is None
@@ -87,3 +98,53 @@ def test_oversized_file():
     )
 
     assert response.status_code == 413
+
+def test_upload_returns_capped_score_breakdown():
+    log_content = b"""
+    Event ID: 4625 Failed logon for user jsmith
+    Event ID: 4625 Failed logon for user jsmith
+    Event ID: 4625 Failed logon for user jsmith
+    Event ID: 4625 Failed logon for user jsmith
+    Event ID: 4625 Failed logon for user jsmith
+    Event ID: 4624 Successful logon for user jsmith
+    Event ID: 4104 PowerShell.exe -EncodedCommand AAAA
+    Administrator account activity detected
+    Event ID: 1102 The audit log was cleared
+    """
+
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "capped-score.log",
+                log_content,
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+
+    analysis = response.json()["analysis"]
+
+    assert analysis["score_before_cap"] == 160
+    assert analysis["risk_score"] == 100
+    assert analysis["score_cap"] == 100
+    assert analysis["risk_level"] == "High"
+    assert analysis["total_findings"] == 5
+
+    assert sum(
+        item["points"]
+        for item in analysis["score_breakdown"]
+    ) == 160
+
+    assert [
+        item["finding_type"]
+        for item in analysis["score_breakdown"]
+    ] == [
+        "Failed Login Attempts",
+        "Suspicious PowerShell Activity",
+        "Administrator Account Activity",
+        "Login After Multiple Failures",
+        "Windows Security Log Cleared",
+    ]
