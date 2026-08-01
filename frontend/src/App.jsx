@@ -29,8 +29,22 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+function formatAnalysisTime(value) {
+  const analysisDate = new Date(value);
+
+  if (Number.isNaN(analysisDate.getTime())) {
+    return "Time unavailable";
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(analysisDate);
+}
+
 function App() {
   const fileInputRef = useRef(null);
+  const uploadPanelRef = useRef(null);
 
   const [selectedFile, setSelectedFile] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
@@ -166,6 +180,15 @@ function App() {
     }
   }
 
+  function startNewAnalysis() {
+    clearFile();
+
+    uploadPanelRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }
+
   const riskLevel =
     analysisResult?.analysis?.risk_level ?? "";
     
@@ -215,7 +238,10 @@ function App() {
           </p>
         </section>
 
-        <section className="panel upload-panel">
+        <section
+          ref={uploadPanelRef}
+          className="panel upload-panel"
+        >
           <div className="panel-heading">
             <div>
               <p className="section-label">Log upload</p>
@@ -300,11 +326,28 @@ function App() {
                 <h3>{analysisResult.filename}</h3>
               </div>
 
-              <span
-                className={`risk-badge ${riskLevel.toLowerCase()}`}
-              >
-                {riskLevel} risk
-              </span>
+              <div className="results-actions">
+                <span
+                  className={`risk-badge ${riskLevel.toLowerCase()}`}
+                >
+                  {riskLevel} risk
+                </span>
+
+                <span className="analysis-time">
+                  Analyzed{" "}
+                  {formatAnalysisTime(
+                    analysisResult.analyzed_at
+                  )}
+                </span>
+
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={startNewAnalysis}
+                >
+                  Analyze another file
+                </button>
+              </div>
             </div>
 
             <div className="summary-grid">

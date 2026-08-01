@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE
@@ -49,6 +51,11 @@ async def upload_file(file: UploadFile = File(...)):
     analysis = analyze_log(decoded_text)
     ai_summary = generate_ai_summary(analysis)
     return {
+        "analyzed_at": (
+            datetime.now(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        ),
         "filename": filename,
         "content_type": file.content_type,
         "size_bytes": len(contents),
