@@ -9,6 +9,40 @@ from app.services.analyzer import analyze_log
 
 router = APIRouter(tags=["Log Analysis"])
 
+FILE_READ_CHUNK_SIZE = 64 * 1024
+
+
+async def _read_limited_upload(
+    file: UploadFile,
+) -> bytes:
+    contents = bytearray()
+
+    while True:
+        bytes_remaining = MAX_FILE_SIZE - len(contents)
+
+        chunk = await file.read(
+            min(
+                FILE_READ_CHUNK_SIZE,
+                bytes_remaining + 1,
+            )
+        )
+
+        if not chunk:
+            break
+
+        contents.extend(chunk)
+
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=(
+                    "File is too large. Maximum allowed "
+                    "size is 5 MB."
+                ),
+            )
+
+    return bytes(contents)
+
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -26,13 +60,7 @@ async def upload_file(file: UploadFile = File(...)):
             detail="Unsupported file type. Upload a TXT, LOG, CSV, or JSON file.",
         )
 
-    contents = await file.read()
-
-    if len(contents) > MAX_FILE_SIZE:
-        raise HTTPException(
-            status_code=413,
-            detail="File is too large. Maximum allowed size is 5 MB.",
-        )
+    contents = await _read_limited_upload(file)
 
     if not contents:
         raise HTTPException(
