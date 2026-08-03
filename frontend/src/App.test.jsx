@@ -243,6 +243,14 @@ describe("SecureLens App", () => {
       ).toBeInTheDocument();
 
       expect(
+        screen.getByText("Input format")
+      ).toBeInTheDocument();
+
+      expect(
+        screen.getByText("TEXT")
+      ).toBeInTheDocument();
+
+      expect(
         screen.getByText("4")
       ).toBeInTheDocument();
 

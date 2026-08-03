@@ -395,6 +395,14 @@ function App() {
               </article>
 
               <article className="summary-card">
+                <span>Input format</span>
+
+                <strong>
+                  {analysisResult.input_format?.toUpperCase() ?? "UNKNOWN"}
+                </strong>
+              </article>
+
+              <article className="summary-card">
                 <span>File size</span>
 
                 <strong>
