@@ -9,6 +9,7 @@ from app.routers.uploads import (
     FILE_READ_CHUNK_SIZE,
     _read_limited_upload,
 )
+from app.config import MAX_FILE_SIZE_MB
 from main import MAX_FILE_SIZE, app
 
 
@@ -247,7 +248,7 @@ def test_limited_reader_stops_after_size_limit():
     assert error.value.status_code == 413
     assert error.value.detail == (
         "File is too large. Maximum allowed "
-        "size is 5 MB."
+        f"size is {MAX_FILE_SIZE_MB} MB."
     )
 
     assert upload.bytes_returned == (

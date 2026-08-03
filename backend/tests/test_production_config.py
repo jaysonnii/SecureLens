@@ -25,6 +25,44 @@ def test_boolean_environment_parser(monkeypatch):
     ) is False
 
 
+def test_integer_environment_parser(monkeypatch):
+    monkeypatch.setenv(
+        "SECURELENS_TEST_INTEGER",
+        "50",
+    )
+
+    assert config._get_int_env(
+        "SECURELENS_TEST_INTEGER",
+        default=25,
+        minimum=1,
+        maximum=100,
+    ) == 50
+
+    monkeypatch.setenv(
+        "SECURELENS_TEST_INTEGER",
+        "not-a-number",
+    )
+
+    assert config._get_int_env(
+        "SECURELENS_TEST_INTEGER",
+        default=25,
+        minimum=1,
+        maximum=100,
+    ) == 25
+
+    monkeypatch.setenv(
+        "SECURELENS_TEST_INTEGER",
+        "500",
+    )
+
+    assert config._get_int_env(
+        "SECURELENS_TEST_INTEGER",
+        default=25,
+        minimum=1,
+        maximum=100,
+    ) == 100
+
+
 def test_csv_environment_parser(monkeypatch):
     monkeypatch.setenv(
         "SECURELENS_TEST_LIST",

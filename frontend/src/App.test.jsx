@@ -114,6 +114,12 @@ describe("SecureLens App", () => {
       await screen.findByText("API Online")
     ).toBeInTheDocument();
 
+    expect(
+      screen.getByText(
+        "TXT, LOG, CSV or JSON · Maximum 25 MB"
+      )
+    ).toBeInTheDocument();
+
     expect(fetch).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/health",
       expect.objectContaining({

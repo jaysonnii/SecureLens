@@ -2,7 +2,11 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
-from app.config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE
+from app.config import (
+    ALLOWED_EXTENSIONS,
+    MAX_FILE_SIZE,
+    MAX_FILE_SIZE_MB,
+)
 from app.services.ai_summary import generate_ai_summary
 from app.services.analyzer import analyze_log
 
@@ -37,7 +41,7 @@ async def _read_limited_upload(
                 status_code=413,
                 detail=(
                     "File is too large. Maximum allowed "
-                    "size is 5 MB."
+                    f"size is {MAX_FILE_SIZE_MB} MB."
                 ),
             )
 
