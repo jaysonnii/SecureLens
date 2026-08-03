@@ -387,6 +387,14 @@ function App() {
               </article>
 
               <article className="summary-card">
+                <span>Records analyzed</span>
+
+                <strong>
+                  {analysisResult.records_analyzed}
+                </strong>
+              </article>
+
+              <article className="summary-card">
                 <span>File size</span>
 
                 <strong>

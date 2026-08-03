@@ -43,8 +43,9 @@ Login sequences are correlated using recognized usernames and source IPv4 addres
 ### Secure Upload Validation
 
 - Accepts `.txt`, `.log`, `.csv`, and `.json`
-- Requires UTF-8 text
-- Enforces a 5 MB limit
+- Parses JSON arrays, JSON objects, JSON Lines, and header-based CSV records
+- Requires UTF-8 text and supports UTF-8 BOM files
+- Defaults to a configurable 25 MB limit with a supported range of 1 to 100 MB
 - Reads uploads in bounded 64 KB chunks
 - Rejects oversized files after the first byte beyond the limit
 
@@ -159,6 +160,7 @@ Create `backend/.env` from `backend/.env.example`.
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `MAX_FILE_SIZE_MB` | `25` | Upload limit from 1 to 100 MB |
 | `AI_SUMMARY_ENABLED` | `false` | Enables or disables OpenAI summaries |
 | `OPENAI_API_KEY` | Empty | API key used only when summaries are enabled |
 | `OPENAI_MODEL` | `gpt-5-mini` | Model used for the optional summary |
@@ -226,7 +228,7 @@ GitHub Actions runs backend and frontend checks for pushes and pull requests tar
 
 ## Security and Privacy Design
 
-- Uploads are limited to 5 MB.
+- Uploads default to 25 MB and can be configured from 1 to 100 MB.
 - Oversized uploads are read only to the limit plus one byte.
 - Only supported text extensions are accepted.
 - Files must decode as UTF-8.
@@ -256,7 +258,6 @@ Avoid uploading credentials, secrets, regulated data, or sensitive production lo
 
 - Additional Windows and Linux detections
 - IPv6 identity correlation
-- Structured JSON and CSV parsing
 - Authentication and role-based access
 - Saved analysis history
 - Exportable reports
