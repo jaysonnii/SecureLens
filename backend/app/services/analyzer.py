@@ -87,7 +87,8 @@ USER_PATTERNS = (
 
 SOURCE_IP_PATTERN = re.compile(
     (
-        r"\b(?:source\s+ip|src(?:_ip)?|ip\s+address)"
+        r"\b(?:source\s+network\s+address|"
+        r"source\s+ip|src(?:_ip)?|ip\s+address)"
         r"\s*[:=]\s*"
         r"((?:\d{1,3}\.){3}\d{1,3})\b"
     ),
@@ -154,14 +155,29 @@ def _create_evidence(
 def _extract_event_identity(
     line: str,
 ) -> tuple[str | None, str | None]:
-    username = None
+    username_candidates = []
 
     for pattern in USER_PATTERNS:
-        username_match = pattern.search(line)
+        for username_match in pattern.finditer(line):
+            candidate = (
+                username_match.group(1)
+                .strip()
+                .lower()
+            )
 
-        if username_match:
-            username = username_match.group(1).lower()
-            break
+            if candidate not in {
+                "-",
+                "n/a",
+                "none",
+                "unknown",
+            }:
+                username_candidates.append(candidate)
+
+    username = (
+        username_candidates[-1]
+        if username_candidates
+        else None
+    )
 
     source_ip_match = SOURCE_IP_PATTERN.search(line)
     source_ip = (

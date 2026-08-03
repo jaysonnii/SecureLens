@@ -9,6 +9,10 @@ from app.config import (
 )
 from app.services.ai_summary import generate_ai_summary
 from app.services.analyzer import analyze_log
+from app.services.log_parser import (
+    LogParseError,
+    parse_log_content,
+)
 
 
 router = APIRouter(tags=["Log Analysis"])
@@ -73,14 +77,27 @@ async def upload_file(file: UploadFile = File(...)):
         )
 
     try:
-        decoded_text = contents.decode("utf-8")
+        decoded_text = contents.decode("utf-8-sig")
     except UnicodeDecodeError as error:
         raise HTTPException(
             status_code=400,
             detail="The file could not be read as UTF-8 text.",
         ) from error
 
-    analysis = analyze_log(decoded_text)
+    try:
+        parsed_log = parse_log_content(
+            decoded_text,
+            extension,
+        )
+    except LogParseError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    analysis = analyze_log(
+        parsed_log.analysis_text
+    )
     ai_summary = await generate_ai_summary(analysis)
     return {
         "analyzed_at": (
@@ -91,6 +108,8 @@ async def upload_file(file: UploadFile = File(...)):
         "filename": filename,
         "content_type": file.content_type,
         "size_bytes": len(contents),
+        "input_format": parsed_log.input_format,
+        "records_analyzed": parsed_log.record_count,
         "preview": decoded_text[:500],
         "analysis": analysis,
         "ai_summary": ai_summary,

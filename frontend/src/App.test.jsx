@@ -29,6 +29,8 @@ const analysisResponse = {
   filename: "security.log",
   content_type: "text/plain",
   size_bytes: 128,
+  input_format: "text",
+  records_analyzed: 4,
   preview: (
     "Event ID: 4104 PowerShell.exe "
     + "-EncodedCommand AAAA"
@@ -234,6 +236,14 @@ describe("SecureLens App", () => {
 
       expect(
         screen.getByText("Why this score?")
+      ).toBeInTheDocument();
+
+      expect(
+        screen.getByText("Records analyzed")
+      ).toBeInTheDocument();
+
+      expect(
+        screen.getByText("4")
       ).toBeInTheDocument();
 
       expect(

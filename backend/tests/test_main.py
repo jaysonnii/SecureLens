@@ -1,4 +1,5 @@
 import asyncio
+import json
 from datetime import datetime
 
 import pytest
@@ -188,7 +189,99 @@ def test_upload_returns_capped_score_breakdown():
         "Windows Security Log Cleared",
     ]
 
-def test_limited_reader_stops_after_size_limit():
+
+def test_structured_windows_json_upload():
+    records = [
+        {
+            "TimeCreated": "/Date(4000)/",
+            "Id": 4624,
+            "Message": (
+                "Subject Account Name: SYSTEM "
+                "New Logon Account Name: alice "
+                "Source Network Address: 10.0.0.10"
+            ),
+        },
+        {
+            "TimeCreated": "/Date(3000)/",
+            "Id": 4625,
+            "Message": (
+                "Subject Account Name: SYSTEM "
+                "Account Name: alice "
+                "Source Network Address: 10.0.0.10"
+            ),
+        },
+        {
+            "TimeCreated": "/Date(2000)/",
+            "Id": 4625,
+            "Message": (
+                "Subject Account Name: SYSTEM "
+                "Account Name: alice "
+                "Source Network Address: 10.0.0.10"
+            ),
+        },
+        {
+            "TimeCreated": "/Date(1000)/",
+            "Id": 4625,
+            "Message": (
+                "Subject Account Name: SYSTEM "
+                "Account Name: alice "
+                "Source Network Address: 10.0.0.10"
+            ),
+        },
+    ]
+
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "security.json",
+                json.dumps(records).encode("utf-8-sig"),
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    analysis = data["analysis"]
+
+    assert data["input_format"] == "json"
+    assert data["records_analyzed"] == 4
+    assert analysis["risk_score"] == 60
+    assert analysis["risk_level"] == "Medium"
+
+    finding_types = {
+        finding["type"]
+        for finding in analysis["findings"]
+    }
+
+    assert "Failed Login Attempts" in finding_types
+    assert (
+        "Login After Multiple Failures"
+        in finding_types
+    )
+
+
+def test_invalid_json_upload_returns_400():
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "invalid.json",
+                b'{"Id": 4625\nnot-json',
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert "invalid near line" in (
+        response.json()["detail"]
+    ).lower()
+
+
+def test_limited_reader_stops_after_limit_without_unbounded_read():
     upload = TrackingUpload(
         b"a" * (
             MAX_FILE_SIZE
