@@ -18,3 +18,4 @@ backend/venv/
 
 # Windows
 Thumbs.db
+test-logs/

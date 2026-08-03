@@ -34,6 +34,31 @@ def _get_bool_env(
     return raw_value.strip().lower() in TRUE_VALUES
 
 
+def _get_int_env(
+    name: str,
+    default: int,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    raw_value = os.getenv(name)
+
+    if raw_value is None or not raw_value.strip():
+        value = default
+    else:
+        try:
+            value = int(raw_value)
+        except ValueError:
+            value = default
+
+    if minimum is not None:
+        value = max(value, minimum)
+
+    if maximum is not None:
+        value = min(value, maximum)
+
+    return value
+
+
 def _get_csv_env(
     name: str,
     default: tuple[str, ...] = (),
@@ -78,7 +103,14 @@ CORS_ORIGINS = [
     )
 ]
 
-MAX_FILE_SIZE = 5 * 1024 * 1024
+MAX_FILE_SIZE_MB = _get_int_env(
+    "MAX_FILE_SIZE_MB",
+    default=25,
+    minimum=1,
+    maximum=100,
+)
+
+MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
 
 ALLOWED_EXTENSIONS = {
     ".txt",

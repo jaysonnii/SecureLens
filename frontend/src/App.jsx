@@ -7,7 +7,14 @@ const API_URL =
     ? "/api"
     : "http://127.0.0.1:8000");
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
+const MAX_FILE_SIZE_MB = Math.min(
+  100,
+  Math.max(
+    1,
+    Number(import.meta.env.VITE_MAX_FILE_SIZE_MB) || 25
+  )
+);
+const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_EXTENSIONS = ["txt", "log", "csv", "json"];
 
 const API_STATUS_LABELS = {
@@ -98,7 +105,7 @@ function App() {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      return "The selected file is larger than 5 MB.";
+      return `The selected file is larger than ${MAX_FILE_SIZE_MB} MB.`;
     }
 
     if (file.size === 0) {
@@ -252,7 +259,7 @@ function App() {
             </div>
 
             <span className="file-rules">
-              TXT, LOG, CSV or JSON · Maximum 5 MB
+              TXT, LOG, CSV or JSON · Maximum {MAX_FILE_SIZE_MB} MB
             </span>
           </div>
 
