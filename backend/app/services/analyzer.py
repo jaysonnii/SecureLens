@@ -42,10 +42,15 @@ SUSPICIOUS_POWERSHELL_TERMS = (
     "remove-eventlog",
 )
 
+# Keep these terms specific enough to avoid treating a group named
+# "Administrators" as generic administrator-account activity.
 ADMINISTRATOR_TERMS = (
-    "administrator",
+    "administrator account",
+    "for administrator",
     "admin account",
     "privileged account",
+    "account name: administrator",
+    "account name=administrator",
 )
 
 CLEARED_LOG_TERMS = (
@@ -55,6 +60,56 @@ CLEARED_LOG_TERMS = (
     "wevtutil cl security",
     "clear-eventlog",
     "remove-eventlog",
+)
+
+PRIVILEGED_GROUP_TERMS = (
+    "administrators",
+    "domain admins",
+    "enterprise admins",
+    "schema admins",
+    "account operators",
+    "backup operators",
+    "server operators",
+)
+
+BUILTIN_PRIVILEGED_ACCOUNTS = (
+    "system",
+    "local service",
+    "network service",
+    "anonymous logon",
+)
+
+MSHTA_TERMS = (
+    "mshta.exe",
+    "\\mshta",
+    " mshta ",
+)
+
+CERTUTIL_TERMS = (
+    "certutil.exe",
+    "\\certutil",
+    " certutil ",
+)
+
+SUSPICIOUS_CERTUTIL_TERMS = (
+    "-urlcache",
+    "-decode",
+    "-decodehex",
+    "-encode",
+    "http://",
+    "https://",
+)
+
+WMIC_TERMS = (
+    "wmic.exe",
+    "\\wmic",
+    " wmic ",
+)
+
+SUSPICIOUS_WMIC_TERMS = (
+    "process call create",
+    "process get brief",
+    "/node:",
 )
 
 
@@ -67,7 +122,18 @@ EVENT_ID_PATTERNS = {
         ),
         re.IGNORECASE,
     )
-    for event_id in (1102, 4104, 4624, 4625)
+    for event_id in (
+        1102,
+        4104,
+        4624,
+        4625,
+        4672,
+        4688,
+        4720,
+        4728,
+        4732,
+        4740,
+    )
 }
 
 
@@ -131,6 +197,59 @@ def _find_matches(
     return matches
 
 
+def _build_event_blocks(
+    lines: list[str],
+) -> list[tuple[int, str]]:
+    blocks = []
+    current_index = None
+    current_parts = []
+
+    for index, line in enumerate(lines):
+        cleaned_line = " ".join(line.split())
+
+        if not cleaned_line:
+            continue
+
+        starts_event = any(
+            pattern.search(cleaned_line)
+            for pattern in EVENT_ID_PATTERNS.values()
+        )
+
+        if starts_event:
+            if current_parts and current_index is not None:
+                blocks.append(
+                    (current_index, " ".join(current_parts))
+                )
+
+            current_index = index
+            current_parts = [cleaned_line]
+            continue
+
+        if current_parts:
+            current_parts.append(cleaned_line)
+
+    if current_parts and current_index is not None:
+        blocks.append(
+            (current_index, " ".join(current_parts))
+        )
+
+    return blocks
+
+
+def _find_event_blocks(
+    event_blocks: list[tuple[int, str]],
+    event_ids: tuple[int, ...],
+) -> list[tuple[int, str]]:
+    return [
+        block
+        for block in event_blocks
+        if any(
+            EVENT_ID_PATTERNS[event_id].search(block[1])
+            for event_id in event_ids
+        )
+    ]
+
+
 def _create_evidence(
     matches: list[tuple[int, str]],
 ) -> list[str]:
@@ -187,6 +306,18 @@ def _extract_event_identity(
     )
 
     return username, source_ip
+
+
+def _is_builtin_privileged_account(line: str) -> bool:
+    lowercase_line = line.lower()
+
+    return any(
+        (
+            f"account name: {account}" in lowercase_line
+            or f"account name={account}" in lowercase_line
+        )
+        for account in BUILTIN_PRIVILEGED_ACCOUNTS
+    )
 
 
 def _events_correlate(
@@ -260,6 +391,7 @@ def _find_login_sequence(
 
 def analyze_log(log_text: str) -> dict:
     lines = log_text.splitlines()
+    event_blocks = _build_event_blocks(lines)
 
     failed_matches = _find_matches(
         lines,
@@ -298,6 +430,73 @@ def analyze_log(log_text: str) -> dict:
         terms=CLEARED_LOG_TERMS,
         event_ids=(1102,),
     )
+
+    account_lockout_matches = _find_event_blocks(
+        event_blocks,
+        (4740,),
+    )
+
+    account_created_matches = _find_event_blocks(
+        event_blocks,
+        (4720,),
+    )
+
+    group_membership_matches = _find_event_blocks(
+        event_blocks,
+        (4728, 4732),
+    )
+    privileged_group_matches = [
+        match
+        for match in group_membership_matches
+        if _line_matches(
+            match[1],
+            terms=PRIVILEGED_GROUP_TERMS,
+        )
+    ]
+
+    special_privilege_matches = [
+        match
+        for match in _find_event_blocks(
+            event_blocks,
+            (4672,),
+        )
+        if not _is_builtin_privileged_account(match[1])
+    ]
+
+    process_creation_matches = _find_event_blocks(
+        event_blocks,
+        (4688,),
+    )
+
+    mshta_matches = [
+        match
+        for match in process_creation_matches
+        if _line_matches(match[1], terms=MSHTA_TERMS)
+    ]
+
+    certutil_matches = [
+        match
+        for match in process_creation_matches
+        if (
+            _line_matches(match[1], terms=CERTUTIL_TERMS)
+            and _line_matches(
+                match[1],
+                terms=SUSPICIOUS_CERTUTIL_TERMS,
+            )
+        )
+    ]
+
+    wmic_matches = [
+        match
+        for match in process_creation_matches
+        if (
+            _line_matches(match[1], terms=WMIC_TERMS)
+            and _line_matches(
+                match[1],
+                terms=SUSPICIOUS_WMIC_TERMS,
+            )
+        )
+    ]
 
     findings = []
     risk_score = 0
@@ -502,6 +701,231 @@ def analyze_log(log_text: str) -> dict:
                 "reason": (
                     "Windows security or audit log clearing "
                     "activity was detected."
+                ),
+            }
+        )
+
+    if account_lockout_matches:
+        findings.append(
+            {
+                "type": "Account Lockout",
+                "count": len(account_lockout_matches),
+                "severity": "Medium",
+                "mitre_attack": "T1110 - Brute Force",
+                "recommendation": (
+                    "Review preceding failed logons, the caller "
+                    "computer, source addresses, and whether the "
+                    "lockout was expected."
+                ),
+                "evidence": _create_evidence(
+                    account_lockout_matches
+                ),
+            }
+        )
+
+        risk_score += 30
+        score_breakdown.append(
+            {
+                "finding_type": "Account Lockout",
+                "points": 30,
+                "reason": (
+                    "A Windows account lockout event was detected."
+                ),
+            }
+        )
+
+    if account_created_matches:
+        findings.append(
+            {
+                "type": "User Account Created",
+                "count": len(account_created_matches),
+                "severity": "Medium",
+                "mitre_attack": "T1136 - Create Account",
+                "recommendation": (
+                    "Verify who created the account, confirm the "
+                    "business justification, and review its group "
+                    "memberships and subsequent activity."
+                ),
+                "evidence": _create_evidence(
+                    account_created_matches
+                ),
+            }
+        )
+
+        risk_score += 30
+        score_breakdown.append(
+            {
+                "finding_type": "User Account Created",
+                "points": 30,
+                "reason": (
+                    "A Windows user account creation event was "
+                    "detected."
+                ),
+            }
+        )
+
+    if privileged_group_matches:
+        findings.append(
+            {
+                "type": (
+                    "Privileged Group Membership Change"
+                ),
+                "count": len(privileged_group_matches),
+                "severity": "High",
+                "mitre_attack": (
+                    "T1098.007 - Additional Local or Domain Groups"
+                ),
+                "recommendation": (
+                    "Confirm the membership change was authorized, "
+                    "identify the actor and added member, and review "
+                    "the account's activity before and after the change."
+                ),
+                "evidence": _create_evidence(
+                    privileged_group_matches
+                ),
+            }
+        )
+
+        risk_score += 40
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Privileged Group Membership Change"
+                ),
+                "points": 40,
+                "reason": (
+                    "A member was added to a recognized privileged "
+                    "Windows group."
+                ),
+            }
+        )
+
+    if special_privilege_matches:
+        findings.append(
+            {
+                "type": "Special Privileges Assigned",
+                "count": len(special_privilege_matches),
+                "severity": "Low",
+                "mitre_attack": "T1078 - Valid Accounts",
+                "recommendation": (
+                    "Confirm the privileged logon was expected and "
+                    "review the account, logon type, source system, "
+                    "and activity that followed."
+                ),
+                "evidence": _create_evidence(
+                    special_privilege_matches
+                ),
+            }
+        )
+
+        risk_score += 10
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Special Privileges Assigned"
+                ),
+                "points": 10,
+                "reason": (
+                    "Special privileges were assigned to a "
+                    "non-system account logon."
+                ),
+            }
+        )
+
+    if mshta_matches:
+        findings.append(
+            {
+                "type": "Suspicious Mshta Execution",
+                "count": len(mshta_matches),
+                "severity": "High",
+                "mitre_attack": "T1218.005 - Mshta",
+                "recommendation": (
+                    "Review the full command line, parent process, "
+                    "referenced HTA or URL, user account, and related "
+                    "network or child-process activity."
+                ),
+                "evidence": _create_evidence(mshta_matches),
+            }
+        )
+
+        risk_score += 40
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Suspicious Mshta Execution"
+                ),
+                "points": 40,
+                "reason": (
+                    "Mshta execution was detected in a Windows "
+                    "process-creation event."
+                ),
+            }
+        )
+
+    if certutil_matches:
+        findings.append(
+            {
+                "type": "Suspicious Certutil Activity",
+                "count": len(certutil_matches),
+                "severity": "High",
+                "mitre_attack": (
+                    "T1105 - Ingress Tool Transfer"
+                ),
+                "recommendation": (
+                    "Review the full command line, downloaded or "
+                    "decoded file, destination path, parent process, "
+                    "user account, and network connections."
+                ),
+                "evidence": _create_evidence(
+                    certutil_matches
+                ),
+            }
+        )
+
+        risk_score += 40
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Suspicious Certutil Activity"
+                ),
+                "points": 40,
+                "reason": (
+                    "Certutil was used with download, encoding, "
+                    "or decoding indicators."
+                ),
+            }
+        )
+
+    if wmic_matches:
+        findings.append(
+            {
+                "type": (
+                    "Suspicious WMI Process Creation"
+                ),
+                "count": len(wmic_matches),
+                "severity": "High",
+                "mitre_attack": (
+                    "T1047 - Windows Management Instrumentation"
+                ),
+                "recommendation": (
+                    "Review the WMIC command, target host, created "
+                    "process, parent process, user account, and any "
+                    "related remote execution activity."
+                ),
+                "evidence": _create_evidence(wmic_matches),
+            }
+        )
+
+        risk_score += 35
+        score_breakdown.append(
+            {
+                "finding_type": (
+                    "Suspicious WMI Process Creation"
+                ),
+                "points": 35,
+                "reason": (
+                    "WMIC process creation or remote execution "
+                    "indicators were detected."
                 ),
             }
         )

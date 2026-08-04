@@ -33,10 +33,15 @@ The deterministic analyzer currently detects:
 - Suspicious or encoded PowerShell activity
 - Administrator or privileged account activity
 - Windows security log clearing
+- Account lockouts
+- User account creation
+- Privileged group membership changes
+- Special privileges assigned to non-system logons
+- Suspicious `mshta`, `certutil`, and `wmic` process execution
 
-Recognized Windows Event IDs include `4625`, `4624`, `4104`, and `1102`.
+Recognized Windows Event IDs include `4625`, `4624`, `4104`, `1102`, `4740`, `4720`, `4728`, `4732`, `4672`, and `4688`.
 
-Login sequences are correlated using recognized usernames and source IPv4 addresses when available.
+Login sequences are correlated using recognized usernames and source IPv4 addresses when available. Process-creation rules inspect command-line content to distinguish suspicious activity from benign Event ID `4688` records.
 
 ## Key Features
 
