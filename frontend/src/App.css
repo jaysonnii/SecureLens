@@ -506,6 +506,30 @@ button {
   color: var(--accent);
 }
 
+.fingerprint-panel {
+  margin-bottom: 20px;
+  padding: 18px 20px;
+}
+
+.fingerprint-panel span {
+  display: block;
+  margin-bottom: 9px;
+
+  color: var(--text-muted);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.fingerprint-panel code {
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
 /* Risk score explanation */
 
 .score-breakdown-panel {

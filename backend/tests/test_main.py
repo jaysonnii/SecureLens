@@ -1,6 +1,7 @@
 import asyncio
 import json
 from datetime import datetime
+from hashlib import sha256
 
 import pytest
 from fastapi import HTTPException
@@ -79,6 +80,7 @@ def test_valid_log_upload():
     data = response.json()
 
     assert data["filename"] == "security.log"
+    assert data["sha256"] == sha256(log_content).hexdigest()
     assert data["analyzed_at"].endswith("Z")
 
     datetime.fromisoformat(

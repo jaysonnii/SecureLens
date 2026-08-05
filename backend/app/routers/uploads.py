@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from hashlib import sha256
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
@@ -108,6 +109,7 @@ async def upload_file(file: UploadFile = File(...)):
         "filename": filename,
         "content_type": file.content_type,
         "size_bytes": len(contents),
+        "sha256": sha256(contents).hexdigest(),
         "input_format": parsed_log.input_format,
         "records_analyzed": parsed_log.record_count,
         "preview": decoded_text[:500],
