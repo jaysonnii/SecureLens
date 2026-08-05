@@ -461,6 +461,11 @@ function App() {
               </article>
             </div>
 
+            <div className="panel fingerprint-panel">
+              <span>SHA-256 fingerprint</span>
+
+              <code>{analysisResult.sha256}</code>
+            </div>
 
             {scoreBreakdown.length > 0 && (
               <div className="panel score-breakdown-panel">

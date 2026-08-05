@@ -29,6 +29,7 @@ const analysisResponse = {
   filename: "security.log",
   content_type: "text/plain",
   size_bytes: 128,
+  sha256: "a".repeat(64),
   input_format: "text",
   records_analyzed: 4,
   preview: (
@@ -277,6 +278,14 @@ describe("SecureLens App", () => {
 
       expect(
         screen.getByText("TEXT")
+      ).toBeInTheDocument();
+
+      expect(
+        screen.getByText("SHA-256 fingerprint")
+      ).toBeInTheDocument();
+
+      expect(
+        screen.getByText("a".repeat(64))
       ).toBeInTheDocument();
 
       expect(
