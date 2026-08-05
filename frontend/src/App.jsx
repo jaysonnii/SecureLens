@@ -62,6 +62,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [apiStatus, setApiStatus] = useState("checking");
+  const [copyStatus, setCopyStatus] = useState("idle");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -119,6 +120,7 @@ function App() {
     const validationError = validateFile(file);
 
     setAnalysisResult(null);
+    setCopyStatus("idle");
     setError(validationError);
 
     if (validationError) {
@@ -183,6 +185,7 @@ function App() {
   function clearFile() {
     setSelectedFile(null);
     setAnalysisResult(null);
+    setCopyStatus("idle");
     setError("");
 
     if (fileInputRef.current) {
@@ -197,6 +200,21 @@ function App() {
       behavior: "smooth",
       block: "start",
     });
+  }
+
+  async function copySha256Fingerprint() {
+    if (!analysisResult?.sha256) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        analysisResult.sha256
+      );
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("error");
+    }
   }
 
   function downloadAnalysisReport() {
@@ -462,9 +480,29 @@ function App() {
             </div>
 
             <div className="panel fingerprint-panel">
-              <span>SHA-256 fingerprint</span>
+              <div className="fingerprint-heading">
+                <span>SHA-256 fingerprint</span>
+
+                <button
+                  className="fingerprint-copy-button"
+                  type="button"
+                  onClick={copySha256Fingerprint}
+                >
+                  {copyStatus === "copied"
+                    ? "Copied"
+                    : copyStatus === "error"
+                      ? "Copy failed"
+                      : "Copy"}
+                </button>
+              </div>
 
               <code>{analysisResult.sha256}</code>
+
+              {copyStatus === "error" && (
+                <p className="fingerprint-copy-error" role="status">
+                  Clipboard access is unavailable.
+                </p>
+              )}
             </div>
 
             {scoreBreakdown.length > 0 && (

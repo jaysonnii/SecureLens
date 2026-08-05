@@ -126,6 +126,7 @@ describe("SecureLens App", () => {
         value: vi.fn(),
       }
     );
+
   });
 
   afterEach(() => {
@@ -286,6 +287,22 @@ describe("SecureLens App", () => {
 
       expect(
         screen.getByText("a".repeat(64))
+      ).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole("button", {
+          name: "Copy",
+        })
+      );
+
+      expect(
+        await navigator.clipboard.readText()
+      ).toBe("a".repeat(64));
+
+      expect(
+        screen.getByRole("button", {
+          name: "Copied",
+        })
       ).toBeInTheDocument();
 
       expect(
