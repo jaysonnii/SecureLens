@@ -511,9 +511,16 @@ button {
   padding: 18px 20px;
 }
 
+.fingerprint-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 9px;
+}
+
 .fingerprint-panel span {
   display: block;
-  margin-bottom: 9px;
 
   color: var(--text-muted);
   font-family: "IBM Plex Mono", monospace;
@@ -522,12 +529,36 @@ button {
   text-transform: uppercase;
 }
 
+.fingerprint-copy-button {
+  padding: 7px 11px;
+
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 11px;
+}
+
+.fingerprint-copy-button:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
 .fingerprint-panel code {
   color: var(--text);
   font-family: "IBM Plex Mono", monospace;
   font-size: 12px;
   line-height: 1.7;
   overflow-wrap: anywhere;
+}
+
+.fingerprint-copy-error {
+  margin: 10px 0 0;
+
+  color: var(--critical);
+  font-size: 12px;
 }
 
 /* Risk score explanation */
