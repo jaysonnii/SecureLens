@@ -20,6 +20,8 @@ Users can upload a supported security log and receive:
 - Recommended investigation steps
 - A local analyst-style summary
 - An optional OpenAI-generated summary
+- A SHA-256 fingerprint calculated from the original uploaded bytes
+- A downloadable JSON analysis report
 
 SecureLens is an educational analysis tool. It is not a replacement for a SIEM, EDR platform, incident-response process, or trained security analyst.
 
@@ -54,6 +56,14 @@ Login sequences are correlated using recognized usernames and source IPv4 addres
 - Reads uploads in bounded 64 KB chunks
 - Rejects oversized files after the first byte beyond the limit
 
+### File Integrity and Report Export
+
+- Calculates a SHA-256 fingerprint from the original uploaded file bytes
+- Displays the full fingerprint in the analysis results
+- Includes the fingerprint in downloaded JSON reports
+- Exports the completed analysis with an export timestamp
+- Excludes the raw log preview from downloaded reports
+
 ### Explainable Risk Scoring
 
 SecureLens returns the points added by each finding, the reason for each score contribution, the score before the cap, the final score after the 100-point cap, and a Low, Medium, or High risk level.
@@ -79,6 +89,7 @@ flowchart LR
     User[Security Analyst] --> Frontend[React and Vite]
     Frontend -->|Multipart Upload| API[FastAPI Backend]
     API --> Validation[Extension, Size and UTF-8 Validation]
+    Validation --> Fingerprint[SHA-256 Fingerprint]
     Validation --> Analyzer[Deterministic Analyzer]
     Analyzer --> Findings[Findings and Evidence]
     Analyzer --> Risk[Risk Score]
@@ -87,8 +98,10 @@ flowchart LR
     OpenAI --> AISummary[AI Summary]
     Findings --> Frontend
     Risk --> Frontend
+    Fingerprint --> Frontend
     LocalSummary --> Frontend
     AISummary --> Frontend
+    Frontend --> Report[Downloadable JSON Report]
 ```
 
 ## Technology Stack
@@ -103,21 +116,26 @@ flowchart LR
 
 ```text
 SecureLens/
-â”œâ”€â”€ .github/workflows/
-â”œâ”€â”€ backend/
-â”‚   â”œâ”€â”€ app/routers/
-â”‚   â”œâ”€â”€ app/services/
-â”‚   â”œâ”€â”€ tests/
-â”‚   â”œâ”€â”€ .env.example
-â”‚   â””â”€â”€ Dockerfile
-â”œâ”€â”€ docs/images/
-â”œâ”€â”€ examples/sample-security.log
-â”œâ”€â”€ frontend/
-â”‚   â”œâ”€â”€ src/
-â”‚   â”œâ”€â”€ .env.example
-â”‚   â””â”€â”€ vitest.config.js
-â”œâ”€â”€ pytest.ini
-â””â”€â”€ README.md
+|-- .github/workflows/
+|-- backend/
+|   |-- app/
+|   |   |-- routers/
+|   |   `-- services/
+|   |-- tests/
+|   |-- .env.example
+|   `-- Dockerfile
+|-- docs/images/
+|-- examples/sample-security.log
+|-- frontend/
+|   |-- src/
+|   |-- .env.example
+|   |-- Dockerfile
+|   |-- nginx.conf
+|   `-- vitest.config.js
+|-- docker-compose.yml
+|-- DEPLOYMENT.md
+|-- pytest.ini
+`-- README.md
 ```
 
 ## Requirements
@@ -186,7 +204,8 @@ VITE_API_URL=http://127.0.0.1:8000
 2. Open `http://127.0.0.1:5173`.
 3. Upload `examples/sample-security.log`.
 4. Click **Analyze log**.
-5. Review the score breakdown, evidence, MITRE mappings, summary, and recommended actions.
+5. Review the score breakdown, evidence, MITRE mappings, summary, SHA-256 fingerprint, and recommended actions.
+6. Click **Download report** to export the completed analysis as JSON.
 
 All data in the sample is fictional.
 
@@ -205,12 +224,29 @@ curl.exe -F "file=@examples/sample-security.log" http://127.0.0.1:8000/upload
 
 ## Docker
 
+Build and run the full application with Docker Compose:
+
+```powershell
+docker compose up -d --build --wait --wait-timeout 90
+docker compose ps
+```
+
+Open SecureLens at `http://127.0.0.1:8080`.
+
+Stop the stack with:
+
+```powershell
+docker compose down
+```
+
+To build and run only the backend:
+
 ```powershell
 docker build -t securelens-backend ./backend
 docker run --rm -p 8000:8000 securelens-backend
 ```
 
-With environment variables:
+To pass backend environment variables:
 
 ```powershell
 docker run --rm -p 8000:8000 --env-file backend/.env securelens-backend
@@ -237,6 +273,8 @@ GitHub Actions runs backend and frontend checks for pushes and pull requests tar
 - Oversized uploads are read only to the limit plus one byte.
 - Only supported text extensions are accepted.
 - Files must decode as UTF-8.
+- Each accepted upload receives a SHA-256 fingerprint calculated from its original bytes.
+- Downloaded reports exclude the raw log preview.
 - Raw evidence and uploaded log content are excluded from AI prompts.
 - OpenAI response storage is disabled.
 - AI failures fall back to local summaries.
@@ -254,8 +292,6 @@ Avoid uploading credentials, secrets, regulated data, or sensitive production lo
 - Files must contain UTF-8 text.
 - Analysis history is not stored.
 - There is no authentication or account system.
-- The app is primarily configured for local development.
-- The frontend is not yet containerized.
 - AI summaries require an external OpenAI request when enabled.
 - Results require human review.
 
@@ -265,11 +301,8 @@ Avoid uploading credentials, secrets, regulated data, or sensitive production lo
 - IPv6 identity correlation
 - Authentication and role-based access
 - Saved analysis history
-- Exportable reports
 - SIEM and ticketing integrations
-- Production deployment configuration
 - Configurable detection rules
-- Frontend containerization
 - Expanded browser and accessibility testing
 
 ## Disclaimer
