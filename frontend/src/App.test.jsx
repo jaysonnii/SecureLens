@@ -96,6 +96,35 @@ describe("SecureLens App", () => {
         value: vi.fn(),
       }
     );
+
+    Object.defineProperty(
+      URL,
+      "createObjectURL",
+      {
+        configurable: true,
+        value: vi.fn(
+          () => "blob:securelens-report"
+        ),
+      }
+    );
+
+    Object.defineProperty(
+      URL,
+      "revokeObjectURL",
+      {
+        configurable: true,
+        value: vi.fn(),
+      }
+    );
+
+    Object.defineProperty(
+      HTMLAnchorElement.prototype,
+      "click",
+      {
+        configurable: true,
+        value: vi.fn(),
+      }
+    );
   });
 
   afterEach(() => {
@@ -265,6 +294,26 @@ describe("SecureLens App", () => {
           "T1059.001 - PowerShell"
         )
       ).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole("button", {
+          name: "Download report",
+        })
+      );
+
+      expect(
+        URL.createObjectURL
+      ).toHaveBeenCalledWith(expect.any(Blob));
+
+      expect(
+        HTMLAnchorElement.prototype.click
+      ).toHaveBeenCalled();
+
+      expect(
+        URL.revokeObjectURL
+      ).toHaveBeenCalledWith(
+        "blob:securelens-report"
+      );
 
       expect(fetch).toHaveBeenNthCalledWith(
         2,
