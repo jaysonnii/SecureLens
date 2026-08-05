@@ -199,6 +199,48 @@ function App() {
     });
   }
 
+  function downloadAnalysisReport() {
+    if (!analysisResult) {
+      return;
+    }
+
+    const safeFilename = analysisResult.filename
+      .replace(/\.[^/.]+$/, "")
+      .replace(/[^a-z0-9-_]+/gi, "-")
+      .replace(/^-+|-+$/g, "")
+      || "securelens-analysis";
+
+    const reportData = {
+      ...analysisResult,
+    };
+
+    delete reportData.preview;
+
+    const report = {
+      exported_at: new Date().toISOString(),
+      ...reportData,
+    };
+
+    const reportBlob = new Blob(
+      [JSON.stringify(report, null, 2)],
+      {
+        type: "application/json",
+      }
+    );
+
+    const downloadUrl = URL.createObjectURL(reportBlob);
+    const downloadLink = document.createElement("a");
+
+    downloadLink.href = downloadUrl;
+    downloadLink.download =
+      `${safeFilename}-securelens-report.json`;
+
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    URL.revokeObjectURL(downloadUrl);
+  }
+
   const riskLevel =
     analysisResult?.analysis?.risk_level ?? "";
     
@@ -349,6 +391,14 @@ function App() {
                     analysisResult.analyzed_at
                   )}
                 </span>
+
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={downloadAnalysisReport}
+                >
+                  Download report
+                </button>
 
                 <button
                   className="secondary-button"
