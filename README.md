@@ -132,7 +132,7 @@ SecureLens/
 |   |-- Dockerfile
 |   |-- nginx.conf
 |   `-- vitest.config.js
-|-- docker-compose.yml
+|-- compose.yaml
 |-- DEPLOYMENT.md
 |-- pytest.ini
 `-- README.md
