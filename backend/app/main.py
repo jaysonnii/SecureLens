@@ -8,6 +8,7 @@ from app.config import (
     APP_VERSION,
     CORS_ORIGINS,
 )
+from app.rate_limit import RateLimitMiddleware
 from app.routers.health import router as health_router
 from app.routers.uploads import router as uploads_router
 
@@ -29,6 +30,8 @@ def create_app() -> FastAPI:
         openapi_url=openapi_url,
         redoc_url=redoc_url,
     )
+
+    application.add_middleware(RateLimitMiddleware)
 
     if CORS_ORIGINS:
         application.add_middleware(

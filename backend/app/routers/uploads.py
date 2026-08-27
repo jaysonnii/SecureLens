@@ -1,23 +1,12 @@
 from datetime import datetime, timezone
 from hashlib import sha256
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    HTTPException,
-    Request,
-    UploadFile,
-)
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.config import (
     ALLOWED_EXTENSIONS,
     MAX_FILE_SIZE,
     MAX_FILE_SIZE_MB,
-    RATE_LIMIT_ENABLED,
-    RATE_LIMIT_MAX_REQUESTS,
-    RATE_LIMIT_WINDOW_SECONDS,
-    TRUST_PROXY_HEADERS,
 )
 from app.services.ai_summary import generate_ai_summary
 from app.services.analyzer import analyze_log
@@ -25,65 +14,11 @@ from app.services.log_parser import (
     LogParseError,
     parse_log_content,
 )
-from app.services.rate_limiter import (
-    InMemoryRateLimiter,
-    RateLimitExceeded,
-)
 
 
 router = APIRouter(tags=["Log Analysis"])
 
 FILE_READ_CHUNK_SIZE = 64 * 1024
-
-rate_limiter = InMemoryRateLimiter(
-    max_requests=RATE_LIMIT_MAX_REQUESTS,
-    window_seconds=RATE_LIMIT_WINDOW_SECONDS,
-)
-
-
-def reset_rate_limiter() -> None:
-    """Rebuild the limiter from the current module-level settings.
-
-    Used by tests that override the rate-limit configuration.
-    """
-
-    global rate_limiter
-
-    rate_limiter = InMemoryRateLimiter(
-        max_requests=RATE_LIMIT_MAX_REQUESTS,
-        window_seconds=RATE_LIMIT_WINDOW_SECONDS,
-    )
-
-
-def _client_key(request: Request) -> str:
-    if TRUST_PROXY_HEADERS:
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip.strip()
-
-    if request.client is not None:
-        return request.client.host
-
-    return "unknown"
-
-
-def enforce_rate_limit(request: Request) -> None:
-    if not RATE_LIMIT_ENABLED:
-        return
-
-    try:
-        rate_limiter.check(_client_key(request))
-    except RateLimitExceeded as error:
-        raise HTTPException(
-            status_code=429,
-            detail=(
-                "Rate limit exceeded. Try again in "
-                f"{error.retry_after} seconds."
-            ),
-            headers={
-                "Retry-After": str(error.retry_after),
-            },
-        ) from error
 
 
 async def _read_limited_upload(
@@ -118,10 +53,7 @@ async def _read_limited_upload(
     return bytes(contents)
 
 
-@router.post(
-    "/upload",
-    dependencies=[Depends(enforce_rate_limit)],
-)
+@router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     filename = file.filename or "unknown"
 
