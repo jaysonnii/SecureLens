@@ -275,7 +275,7 @@ GitHub Actions runs backend and frontend checks for pushes and pull requests tar
 
 - Uploads default to 25 MB and can be configured from 1 to 100 MB.
 - Oversized uploads are read only to the limit plus one byte.
-- `POST /upload` is rate limited per client IP, checked before the body is read.
+- `POST /upload` is rate limited per client IP with a fixed-window counter.
 - Only supported text extensions are accepted.
 - Files must decode as UTF-8.
 - Each accepted upload receives a SHA-256 fingerprint calculated from its original bytes.
