@@ -14,7 +14,7 @@ Read `README.md` for architecture, stack, and setup. This file covers what the c
 
 **Every conclusion traces to evidence.** Findings link to source lines. Risk scores show their arithmetic (per-finding points, reason, pre-cap total, post-cap total). Future correlations must explain *why* events were grouped, not just that they were.
 
-**Upload validation is a security boundary.** UTF-8 required, 5 MB cap, bounded 64 KB chunk reads, rejection after the first byte past the limit, extension allowlist. Don't relax these for feature convenience — see the EVTX note below.
+**Upload validation is a security boundary.** UTF-8 required; size cap of `MAX_FILE_SIZE_MB` (default 25, configurable 1–100) enforced by the backend and the effective ceiling — the Compose Nginx allows 110 MB so it never pre-empts the backend's error; bounded 64 KB chunk reads; rejection after the first byte past the limit; extension allowlist. Don't relax these for feature convenience — see the EVTX note below.
 
 ## Conventions
 
@@ -28,7 +28,7 @@ Read `README.md` for architecture, stack, and setup. This file covers what the c
 **Deploy a public demo.** Everything else is secondary. The project is documented and CI-covered but nobody can see it run without cloning the repo — that gap is what's blocking the work from paying off.
 
 Before going live:
-1. ~~Rate-limit `POST /upload`.~~ Done — per-IP fixed-window limiter in `app/services/rate_limiter.py`, wired as a route dependency, checked before the body is read. Compose sets `TRUST_PROXY_HEADERS=true` for the `X-Real-IP` from nginx.
+1. ~~Rate-limit `POST /upload`.~~ Done — per-IP fixed-window limiter in `app/services/rate_limiter.py`, wired as a route dependency returning 429. Compose sets `TRUST_PROXY_HEADERS=true` for the `X-Real-IP` from nginx.
 2. Deploy with `AI_SUMMARY_ENABLED=false` — an anonymous public endpoint shouldn't spend the OpenAI key.
 3. Production CORS, production API URL in the frontend, confirm the key never reaches the client.
 
