@@ -8,7 +8,7 @@ SecureLens includes a production-like Docker Compose stack containing:
 - Per-IP rate limiting on `POST /upload`
 - Container health checks
 - Environment-controlled CORS and API documentation
-- A 6 MB Nginx request-body limit
+- An Nginx request-body ceiling above the backend's maximum, so the app returns the size error
 - Browser security headers
 - A non-root backend container
 - Automated full-stack container smoke tests
@@ -69,10 +69,19 @@ CORS can stay empty because the Nginx frontend proxies `/api` on the same browse
 
 When deploying the frontend and backend on different origins, set `CORS_ORIGINS` to an explicit comma-separated list. Do not use `*` for a public deployment.
 
+## Upload Size
+
+The backend is the single source of truth for the upload size limit:
+`MAX_FILE_SIZE_MB` (default 25, range 1–100). Nginx's `client_max_body_size`
+in `frontend/nginx.conf` is fixed at `110m` — above the 100 MB backend
+maximum plus multipart overhead — so an oversized upload is always rejected
+by the backend with its JSON error, never by a raw Nginx 413. Changing
+`MAX_FILE_SIZE_MB` needs no matching Nginx change as long as it stays within
+the supported range.
+
 ## Upload Rate Limiting
 
-The backend applies a per-IP fixed-window limit to `POST /upload`, checked
-before the request body is read:
+The backend applies a per-IP fixed-window limit to `POST /upload`:
 
 ```env
 RATE_LIMIT_ENABLED=true
