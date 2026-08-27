@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-import app.routers.uploads as uploads
+import app.rate_limit as rate_limit
 from app.main import create_app
 
 
@@ -10,13 +10,13 @@ LOG_CONTENT = b"Failed login for administrator\n"
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(uploads, "RATE_LIMIT_ENABLED", True)
-    monkeypatch.setattr(uploads, "RATE_LIMIT_MAX_REQUESTS", 2)
-    monkeypatch.setattr(uploads, "RATE_LIMIT_WINDOW_SECONDS", 60)
-    monkeypatch.setattr(uploads, "TRUST_PROXY_HEADERS", False)
-    uploads.reset_rate_limiter()
+    monkeypatch.setattr(rate_limit, "RATE_LIMIT_ENABLED", True)
+    monkeypatch.setattr(rate_limit, "RATE_LIMIT_MAX_REQUESTS", 2)
+    monkeypatch.setattr(rate_limit, "RATE_LIMIT_WINDOW_SECONDS", 60)
+    monkeypatch.setattr(rate_limit, "TRUST_PROXY_HEADERS", False)
+    rate_limit.reset_rate_limiter()
     yield TestClient(create_app())
-    uploads.reset_rate_limiter()
+    rate_limit.reset_rate_limiter()
 
 
 def _upload(client, **kwargs):
@@ -52,16 +52,16 @@ def test_health_endpoint_is_not_rate_limited(client):
 
 
 def test_disabling_the_limit_allows_unlimited_requests(client, monkeypatch):
-    monkeypatch.setattr(uploads, "RATE_LIMIT_ENABLED", False)
-    uploads.reset_rate_limiter()
+    monkeypatch.setattr(rate_limit, "RATE_LIMIT_ENABLED", False)
+    rate_limit.reset_rate_limiter()
 
     for _ in range(5):
         assert _upload(client).status_code == 200
 
 
 def test_trusted_proxy_uses_x_real_ip_for_separate_buckets(client, monkeypatch):
-    monkeypatch.setattr(uploads, "TRUST_PROXY_HEADERS", True)
-    uploads.reset_rate_limiter()
+    monkeypatch.setattr(rate_limit, "TRUST_PROXY_HEADERS", True)
+    rate_limit.reset_rate_limiter()
 
     assert _upload(client, headers={"X-Real-IP": "10.0.0.1"}).status_code == 200
     assert _upload(client, headers={"X-Real-IP": "10.0.0.1"}).status_code == 200
@@ -72,8 +72,8 @@ def test_trusted_proxy_uses_x_real_ip_for_separate_buckets(client, monkeypatch):
 
 
 def test_client_supplied_forwarded_for_is_ignored_without_x_real_ip(client, monkeypatch):
-    monkeypatch.setattr(uploads, "TRUST_PROXY_HEADERS", True)
-    uploads.reset_rate_limiter()
+    monkeypatch.setattr(rate_limit, "TRUST_PROXY_HEADERS", True)
+    rate_limit.reset_rate_limiter()
 
     for spoofed in ("1.1.1.1", "2.2.2.2", "3.3.3.3"):
         _upload(client, headers={"X-Forwarded-For": spoofed})

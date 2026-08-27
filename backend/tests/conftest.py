@@ -1,6 +1,6 @@
 import pytest
 
-import app.routers.uploads as uploads
+import app.rate_limit as rate_limit
 
 
 @pytest.fixture(autouse=True)
@@ -12,7 +12,7 @@ def disable_rate_limiting_by_default(monkeypatch):
     exercise the limiter re-enable it explicitly.
     """
 
-    monkeypatch.setattr(uploads, "RATE_LIMIT_ENABLED", False)
-    uploads.reset_rate_limiter()
+    monkeypatch.setattr(rate_limit, "RATE_LIMIT_ENABLED", False)
+    rate_limit.reset_rate_limiter()
     yield
-    uploads.reset_rate_limiter()
+    rate_limit.reset_rate_limiter()
