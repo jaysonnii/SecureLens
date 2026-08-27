@@ -184,6 +184,10 @@ Create `backend/.env` from `backend/.env.example`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `MAX_FILE_SIZE_MB` | `25` | Upload limit from 1 to 100 MB |
+| `RATE_LIMIT_ENABLED` | `true` | Per-IP rate limiting on `POST /upload` |
+| `RATE_LIMIT_MAX_REQUESTS` | `10` | Allowed uploads per IP per window |
+| `RATE_LIMIT_WINDOW_SECONDS` | `60` | Length of the rate-limit window |
+| `TRUST_PROXY_HEADERS` | `false` | Read the client IP from `X-Real-IP`; enable only behind the bundled nginx |
 | `AI_SUMMARY_ENABLED` | `false` | Enables or disables OpenAI summaries |
 | `OPENAI_API_KEY` | Empty | API key used only when summaries are enabled |
 | `OPENAI_MODEL` | `gpt-5-mini` | Model used for the optional summary |
@@ -271,6 +275,7 @@ GitHub Actions runs backend and frontend checks for pushes and pull requests tar
 
 - Uploads default to 25 MB and can be configured from 1 to 100 MB.
 - Oversized uploads are read only to the limit plus one byte.
+- `POST /upload` is rate limited per client IP, checked before the body is read.
 - Only supported text extensions are accepted.
 - Files must decode as UTF-8.
 - Each accepted upload receives a SHA-256 fingerprint calculated from its original bytes.

@@ -5,6 +5,7 @@ SecureLens includes a production-like Docker Compose stack containing:
 - A React production build served by Nginx
 - A private FastAPI backend service
 - A same-origin `/api` reverse proxy
+- Per-IP rate limiting on `POST /upload`
 - Container health checks
 - Environment-controlled CORS and API documentation
 - A 6 MB Nginx request-body limit
@@ -67,6 +68,39 @@ CORS_ORIGINS=
 CORS can stay empty because the Nginx frontend proxies `/api` on the same browser origin.
 
 When deploying the frontend and backend on different origins, set `CORS_ORIGINS` to an explicit comma-separated list. Do not use `*` for a public deployment.
+
+## Upload Rate Limiting
+
+The backend applies a per-IP fixed-window limit to `POST /upload`, checked
+before the request body is read:
+
+```env
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_MAX_REQUESTS=10
+RATE_LIMIT_WINDOW_SECONDS=60
+TRUST_PROXY_HEADERS=true
+```
+
+The Compose stack sets `TRUST_PROXY_HEADERS=true` so the backend reads the
+client address from the `X-Real-IP` header that Nginx sets. Enable that flag
+only when the backend is reachable exclusively through a trusted proxy; on a
+directly exposed backend a client could forge the header.
+
+The limiter keeps counters in process memory, which is sufficient for the
+single-worker container in this stack. Running multiple backend workers or
+replicas would give each its own counters; that needs a shared store and is
+out of scope here.
+
+For defense in depth you can also cap requests at the edge in
+`frontend/nginx.conf`, which bounds abuse before it reaches the backend:
+
+```nginx
+# http context
+limit_req_zone $binary_remote_addr zone=upload:10m rate=10r/m;
+
+# inside location /api/
+limit_req zone=upload burst=5 nodelay;
+```
 
 ## Optional AI Summary
 
