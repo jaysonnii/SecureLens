@@ -300,6 +300,10 @@ def _parse_json_records(
 ) -> list[dict[str, Any]]:
     try:
         payload = json.loads(text)
+    except RecursionError as error:
+        raise LogParseError(
+            "The JSON file is nested too deeply to parse."
+        ) from error
     except json.JSONDecodeError:
         records: list[Any] = []
 
@@ -316,6 +320,11 @@ def _parse_json_records(
                 records.append(
                     json.loads(stripped_line)
                 )
+            except RecursionError as error:
+                raise LogParseError(
+                    "The JSON file is nested too deeply to "
+                    f"parse near line {line_number}."
+                ) from error
             except json.JSONDecodeError as error:
                 raise LogParseError(
                     "The JSON file is invalid near "

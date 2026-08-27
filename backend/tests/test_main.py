@@ -283,6 +283,26 @@ def test_invalid_json_upload_returns_400():
     ).lower()
 
 
+def test_deeply_nested_json_upload_returns_400_not_500():
+    payload = (
+        ('{"a":' * 100000) + "1" + ("}" * 100000)
+    ).encode()
+
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "nested.json",
+                payload,
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert "deeply" in response.json()["detail"].lower()
+
+
 def test_limited_reader_stops_after_limit_without_unbounded_read():
     upload = TrackingUpload(
         b"a" * (

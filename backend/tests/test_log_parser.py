@@ -139,6 +139,21 @@ def test_invalid_json_raises_safe_error():
         )
 
 
+def test_deeply_nested_json_document_raises_safe_error():
+    payload = ('{"a":' * 100000) + "1" + ("}" * 100000)
+
+    with pytest.raises(LogParseError):
+        parse_log_content(payload, ".json")
+
+
+def test_deeply_nested_json_lines_entry_raises_safe_error():
+    deep_line = ('{"a":' * 100000) + "1" + ("}" * 100000)
+    text = '{"Id": 4625}\n' + deep_line
+
+    with pytest.raises(LogParseError):
+        parse_log_content(text, ".json")
+
+
 def test_json_array_requires_object_records():
     with pytest.raises(
         LogParseError,
