@@ -119,6 +119,32 @@ ALLOWED_EXTENSIONS = {
     ".json",
 }
 
+RATE_LIMIT_ENABLED = _get_bool_env(
+    "RATE_LIMIT_ENABLED",
+    default=True,
+)
+
+RATE_LIMIT_MAX_REQUESTS = _get_int_env(
+    "RATE_LIMIT_MAX_REQUESTS",
+    default=10,
+    minimum=1,
+)
+
+RATE_LIMIT_WINDOW_SECONDS = _get_int_env(
+    "RATE_LIMIT_WINDOW_SECONDS",
+    default=60,
+    minimum=1,
+)
+
+# Trust X-Real-IP from the reverse proxy when identifying clients for
+# rate limiting. Enable only when the backend sits behind our own nginx
+# (the Compose stack); leave off for direct exposure and local dev,
+# where a client could set the header itself.
+TRUST_PROXY_HEADERS = _get_bool_env(
+    "TRUST_PROXY_HEADERS",
+    default=False,
+)
+
 OPENAI_API_KEY = os.getenv(
     "OPENAI_API_KEY",
     "",
