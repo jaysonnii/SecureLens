@@ -142,7 +142,9 @@ async def generate_ai_summary(analysis: dict) -> dict:
 
     try:
         client = AsyncOpenAI(
-            api_key=config.OPENAI_API_KEY
+            api_key=config.OPENAI_API_KEY,
+            timeout=config.OPENAI_TIMEOUT_SECONDS,
+            max_retries=0,
         )
 
         response = await client.responses.create(

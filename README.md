@@ -184,7 +184,7 @@ Create `backend/.env` from `backend/.env.example`.
 | Variable | Default | Purpose |
 |---|---|---|
 | `MAX_FILE_SIZE_MB` | `5` | Upload limit from 1 to 100 MB |
-| `ANALYSIS_TIME_BUDGET_SECONDS` | `45` | Wall-clock ceiling for a single analysis; over budget returns HTTP 413 |
+| `ANALYSIS_TIME_BUDGET_SECONDS` | `40` | Wall-clock ceiling for a single analysis; over budget returns HTTP 413 |
 | `RATE_LIMIT_ENABLED` | `true` | Per-IP rate limiting on `POST /upload` |
 | `RATE_LIMIT_MAX_REQUESTS` | `10` | Allowed uploads per IP per window |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Length of the rate-limit window |
@@ -192,6 +192,7 @@ Create `backend/.env` from `backend/.env.example`.
 | `AI_SUMMARY_ENABLED` | `false` | Enables or disables OpenAI summaries |
 | `OPENAI_API_KEY` | Empty | API key used only when summaries are enabled |
 | `OPENAI_MODEL` | `gpt-5-mini` | Model used for the optional summary |
+| `OPENAI_TIMEOUT_SECONDS` | `12` | Per-call ceiling on the OpenAI request; on timeout the local summary is used |
 
 Never commit a real API key.
 
@@ -276,7 +277,8 @@ GitHub Actions runs backend and frontend checks for pushes and pull requests tar
 
 - Uploads default to 5 MB and can be configured from 1 to 100 MB.
 - Oversized uploads are read only to the limit plus one byte.
-- Analysis runs under a wall-clock budget (`ANALYSIS_TIME_BUDGET_SECONDS`, default 45); a log that exceeds it is rejected instead of tying up a worker.
+- Analysis runs under a wall-clock budget (`ANALYSIS_TIME_BUDGET_SECONDS`, default 40); a log that exceeds it is rejected instead of tying up a worker.
+- The optional OpenAI call is bounded by `OPENAI_TIMEOUT_SECONDS` (default 12, no retries) so parsing + analysis + summary cannot outlast the reverse proxy's read timeout.
 - `POST /upload` is rate limited per client IP with a fixed-window counter.
 - Only supported text extensions are accepted.
 - Files must decode as UTF-8.

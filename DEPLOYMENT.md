@@ -9,7 +9,7 @@ SecureLens includes a production-like Docker Compose stack containing:
 - Container health checks
 - Environment-controlled CORS and API documentation
 - An Nginx request-body ceiling just above the default upload size, so unvalidated bodies never buffer to the backend
-- A wall-clock budget on analysis so a request cannot outlive the reverse proxy's read timeout
+- Wall-clock budgets on analysis and the AI call so a request cannot outlive the reverse proxy's read timeout
 - Container resource limits (memory, PIDs, CPU) and dropped Linux capabilities
 - Browser security headers
 - A non-root backend container
@@ -101,20 +101,35 @@ reaches the backend at all. To support a higher limit, also:
    maximum,
 3. rebuild the frontend image (`docker compose build frontend`) — the
    config is baked in at build time, and
-4. confirm a worst-case log of the new size still analyzes within
-   `ANALYSIS_TIME_BUDGET_SECONDS`, or raise that too (keeping it below the
+4. confirm a worst-case log of the new size still fits the request-time
+   budget below, or raise the relevant ceiling (keeping the sum below the
    reverse proxy's read timeout).
 
-## Analysis Time Budget
+## Request Time Budget
 
-`analyze_log()` runs under a wall-clock ceiling, `ANALYSIS_TIME_BUDGET_SECONDS`
-(default 45). The analyzer checks the deadline inside its scan loops and,
-if the budget is exceeded, the request returns HTTP 413 with a message
-asking for a smaller or less repetitive log rather than letting the worker
-keep burning CPU behind a connection the reverse proxy has already timed
-out. Keep the budget below Nginx's `proxy_read_timeout` (default 60s).
-The underlying quadratic cost is tracked for a proper fix alongside the
-normalized-event-schema refactor.
+A single `POST /upload` has three timed phases that must sum to less than
+Nginx's `proxy_read_timeout` (default 60s):
+
+| Phase | Ceiling | Worst case measured (5 MB input) |
+|---|---|---|
+| `parse_log_content` | none (bounded by the 5 MB cap) | ~1.2s (wide CSV) |
+| `analyze_log` | `ANALYSIS_TIME_BUDGET_SECONDS` (default 40) | 40s, then HTTP 413 |
+| `generate_ai_summary` | `OPENAI_TIMEOUT_SECONDS` (default 12, no retries) | 0s with AI disabled; ~12s then local fallback if the OpenAI call stalls |
+
+Worst-case total ≈ 1 + 40 + 12 + ~2 overhead ≈ **55s**, leaving headroom
+under 60s. With `AI_SUMMARY_ENABLED=false` (the default) the third phase
+is effectively free.
+
+`analyze_log()` checks its deadline inside its scan loops; over budget it
+returns HTTP 413 asking for a smaller or less repetitive log rather than
+letting the worker keep burning CPU behind a dropped connection. The
+OpenAI client is constructed with an explicit timeout and no retries, so
+a stalled API call falls back to the local summary within the ceiling.
+
+If you change `MAX_FILE_SIZE_MB`, `ANALYSIS_TIME_BUDGET_SECONDS`, or
+`OPENAI_TIMEOUT_SECONDS`, re-check that the three phases still sum below
+the proxy timeout. The analyzer's underlying quadratic cost is tracked
+for a proper fix alongside the normalized-event-schema refactor.
 
 ## Upload Rate Limiting
 
