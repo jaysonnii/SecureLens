@@ -8,7 +8,8 @@ services:
       APP_ENV: production
       API_DOCS_ENABLED: "false"
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-      MAX_FILE_SIZE_MB: "${MAX_FILE_SIZE_MB:-25}"
+      MAX_FILE_SIZE_MB: "${MAX_FILE_SIZE_MB:-5}"
+      ANALYSIS_TIME_BUDGET_SECONDS: "${ANALYSIS_TIME_BUDGET_SECONDS:-45}"
       RATE_LIMIT_ENABLED: "true"
       RATE_LIMIT_MAX_REQUESTS: "${RATE_LIMIT_MAX_REQUESTS:-10}"
       RATE_LIMIT_WINDOW_SECONDS: "${RATE_LIMIT_WINDOW_SECONDS:-60}"
@@ -31,9 +32,10 @@ services:
     # Starlette's multipart parser spools the whole request body here
     # before the handler's size check runs, so cap the mount explicitly
     # rather than letting it default to half of host RAM. Nginx's
-    # client_max_body_size (28m) keeps oversized bodies from reaching it.
+    # client_max_body_size (8m) keeps oversized bodies from reaching it;
+    # 16m leaves room for a couple of concurrent spooled uploads.
     tmpfs:
-      - /tmp:size=64m,mode=1777
+      - /tmp:size=16m,mode=1777
     networks:
       - securelens
 
@@ -42,7 +44,7 @@ services:
       context: ./frontend
       args:
         VITE_API_URL: /api
-        VITE_MAX_FILE_SIZE_MB: "${MAX_FILE_SIZE_MB:-25}"
+        VITE_MAX_FILE_SIZE_MB: "${MAX_FILE_SIZE_MB:-5}"
     ports:
       - "${SECURELENS_BIND_ADDRESS:-127.0.0.1}:${SECURELENS_PORT:-8080}:80"
     depends_on:

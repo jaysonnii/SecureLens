@@ -14,9 +14,11 @@ Read `README.md` for architecture, stack, and setup. This file covers what the c
 
 **Every conclusion traces to evidence.** Findings link to source lines. Risk scores show their arithmetic (per-finding points, reason, pre-cap total, post-cap total). Future correlations must explain *why* events were grouped, not just that they were.
 
-**Upload validation is a security boundary.** UTF-8 required; size cap of `MAX_FILE_SIZE_MB` (default 25, configurable 1–100) enforced by the backend; bounded 64 KB chunk reads; rejection after the first byte past the limit; extension allowlist. Don't relax these for feature convenience — see the EVTX note below.
+**Upload validation is a security boundary.** UTF-8 required; size cap of `MAX_FILE_SIZE_MB` (default 5, configurable 1–100) enforced by the backend; bounded 64 KB chunk reads; rejection after the first byte past the limit; extension allowlist. Don't relax these for feature convenience — see the EVTX note below.
 
-Starlette buffers the whole multipart body (spooling to the backend's `/tmp`) before that check runs, so the Compose stack has two guards in front of it: Nginx `client_max_body_size 28m` (just above the 25 MB default), and `/tmp` mounted `tmpfs,size=64m`. Consequence: raising `MAX_FILE_SIZE_MB` above ~27 means Nginx returns a stock 413 before the backend sees the request — raise `client_max_body_size` and the tmpfs `size=` to match and rebuild the frontend image. See DEPLOYMENT.md "Upload Size".
+The 5 MB default is a deploy constraint, not an arbitrary choice: the analyzer's worst case is quadratic (`_find_login_sequence`, plus repeated full-file passes in `_find_matches`), so a detection-dense log near the old 25 MB cap ran ~200s and 504'd behind nginx while the worker kept burning CPU. A 5 MB dense log runs ~10s. `analyze_log()` also enforces `ANALYSIS_TIME_BUDGET_SECONDS` (default 45, must stay under nginx's 60s `proxy_read_timeout`): over budget it raises `AnalysisTimeout` and the endpoint returns 413. Don't raise `MAX_FILE_SIZE_MB` without re-measuring a worst-case log of that size.
+
+Starlette buffers the whole multipart body (spooling to the backend's `/tmp`) before the size check runs, so the Compose stack has two guards in front of it: Nginx `client_max_body_size 8m` (just above the 5 MB default), and `/tmp` mounted `tmpfs,size=16m`. Consequence: raising `MAX_FILE_SIZE_MB` above ~7 means Nginx returns a stock 413 before the backend sees the request — raise `client_max_body_size` and the tmpfs `size=` to match and rebuild the frontend image. See DEPLOYMENT.md "Upload Size".
 
 ## Conventions
 

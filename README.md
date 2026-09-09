@@ -52,7 +52,7 @@ Login sequences are correlated using recognized usernames and source IPv4 addres
 - Accepts `.txt`, `.log`, `.csv`, and `.json`
 - Parses JSON arrays, JSON objects, JSON Lines, and header-based CSV records
 - Requires UTF-8 text and supports UTF-8 BOM files
-- Defaults to a configurable 25 MB limit with a supported range of 1 to 100 MB
+- Defaults to a configurable 5 MB limit with a supported range of 1 to 100 MB
 - Reads uploads in bounded 64 KB chunks
 - Rejects oversized files after the first byte beyond the limit
 
@@ -183,7 +183,8 @@ Create `backend/.env` from `backend/.env.example`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MAX_FILE_SIZE_MB` | `25` | Upload limit from 1 to 100 MB |
+| `MAX_FILE_SIZE_MB` | `5` | Upload limit from 1 to 100 MB |
+| `ANALYSIS_TIME_BUDGET_SECONDS` | `45` | Wall-clock ceiling for a single analysis; over budget returns HTTP 413 |
 | `RATE_LIMIT_ENABLED` | `true` | Per-IP rate limiting on `POST /upload` |
 | `RATE_LIMIT_MAX_REQUESTS` | `10` | Allowed uploads per IP per window |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Length of the rate-limit window |
@@ -273,8 +274,9 @@ GitHub Actions runs backend and frontend checks for pushes and pull requests tar
 
 ## Security and Privacy Design
 
-- Uploads default to 25 MB and can be configured from 1 to 100 MB.
+- Uploads default to 5 MB and can be configured from 1 to 100 MB.
 - Oversized uploads are read only to the limit plus one byte.
+- Analysis runs under a wall-clock budget (`ANALYSIS_TIME_BUDGET_SECONDS`, default 45); a log that exceeds it is rejected instead of tying up a worker.
 - `POST /upload` is rate limited per client IP with a fixed-window counter.
 - Only supported text extensions are accepted.
 - Files must decode as UTF-8.

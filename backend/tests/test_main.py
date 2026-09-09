@@ -141,6 +141,29 @@ def test_oversized_file():
 
     assert response.status_code == 413
 
+
+def test_analysis_over_time_budget_returns_clean_error(monkeypatch):
+    import app.routers.uploads as uploads
+
+    def _slow_analyze(*args, **kwargs):
+        raise uploads.AnalysisTimeout
+
+    monkeypatch.setattr(uploads, "analyze_log", _slow_analyze)
+
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "dense.log",
+                b"Event ID: 4625 Failed logon for user jsmith\n",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+    assert "time budget" in response.json()["detail"]
+
 def test_upload_returns_capped_score_breakdown():
     log_content = b"""
     Event ID: 4625 Failed logon for user jsmith

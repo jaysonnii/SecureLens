@@ -1,4 +1,6 @@
-from app.services.analyzer import analyze_log
+import pytest
+
+from app.services.analyzer import AnalysisTimeout, analyze_log
 
 
 def get_finding(result: dict, finding_type: str) -> dict:
@@ -243,3 +245,26 @@ def test_login_sequence_uses_actual_success_evidence():
             "for user alice Source IP: 10.0.0.1"
         ),
     ]
+
+
+def test_time_budget_allows_normal_analysis():
+    result = analyze_log(
+        """
+        10:00 Event ID: 4625 Failed logon for user alice Source IP: 10.0.0.1
+        10:01 Event ID: 4624 Successful logon for user alice Source IP: 10.0.0.1
+        """,
+        time_budget_seconds=30,
+    )
+
+    assert result["total_findings"] >= 1
+
+
+def test_exceeded_time_budget_raises_analysis_timeout():
+    # A deadline already in the past trips the first in-loop check.
+    log_text = "\n".join(
+        f"line {index} Event ID: 4688 powershell.exe -enc AAAA"
+        for index in range(50)
+    )
+
+    with pytest.raises(AnalysisTimeout):
+        analyze_log(log_text, time_budget_seconds=-1)

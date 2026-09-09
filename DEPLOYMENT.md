@@ -9,6 +9,7 @@ SecureLens includes a production-like Docker Compose stack containing:
 - Container health checks
 - Environment-controlled CORS and API documentation
 - An Nginx request-body ceiling just above the default upload size, so unvalidated bodies never buffer to the backend
+- A wall-clock budget on analysis so a request cannot outlive the reverse proxy's read timeout
 - Container resource limits (memory, PIDs, CPU) and dropped Linux capabilities
 - Browser security headers
 - A non-root backend container
@@ -73,29 +74,47 @@ When deploying the frontend and backend on different origins, set `CORS_ORIGINS`
 ## Upload Size
 
 The backend is the single source of truth for the upload size limit:
-`MAX_FILE_SIZE_MB` (default 25, range 1–100).
+`MAX_FILE_SIZE_MB` (default 5, range 1–100). The default is deliberately
+low: the deterministic analyzer has quadratic worst-case cost, and a
+detection-dense log near 25 MB can occupy a worker for minutes. A 5 MB
+detection-dense log analyzes in about 10 seconds; the
+`ANALYSIS_TIME_BUDGET_SECONDS` ceiling (see below) backstops the rest.
 
 Starlette's multipart parser buffers the entire request body — spooling to
 the backend container's `/tmp` — *before* the handler's streaming size
 check runs. To keep an unvalidated body from ever reaching that spool,
-Nginx's `client_max_body_size` in `frontend/nginx.conf` is set to `28m`:
-just above the 25 MB default plus multipart framing. Uploads up to ~27 MB
+Nginx's `client_max_body_size` in `frontend/nginx.conf` is set to `8m`:
+just above the 5 MB default plus multipart framing. Uploads up to ~7 MB
 still reach the backend and get its JSON size error; larger ones are cut
 off at Nginx with a 413. The backend container also mounts `/tmp` as a
-`tmpfs` capped at `size=64m` (see `compose.yaml`) so the spool has a hard
+`tmpfs` capped at `size=16m` (see `compose.yaml`) so the spool has a hard
 ceiling regardless of Nginx.
 
-**If you raise `MAX_FILE_SIZE_MB` above ~27**, an upload between the new
+**If you raise `MAX_FILE_SIZE_MB` above ~7**, an upload between the new
 limit and the old one is rejected by Nginx with its stock 413 HTML page
-instead of the backend's JSON error, and an upload larger than `28m` never
+instead of the backend's JSON error, and an upload larger than `8m` never
 reaches the backend at all. To support a higher limit, also:
 
 1. raise `client_max_body_size` in `frontend/nginx.conf` to about
    `MAX_FILE_SIZE_MB + 3m`,
 2. raise the backend `tmpfs` `size=` in `compose.yaml` past the new
-   maximum, and
+   maximum,
 3. rebuild the frontend image (`docker compose build frontend`) — the
-   config is baked in at build time.
+   config is baked in at build time, and
+4. confirm a worst-case log of the new size still analyzes within
+   `ANALYSIS_TIME_BUDGET_SECONDS`, or raise that too (keeping it below the
+   reverse proxy's read timeout).
+
+## Analysis Time Budget
+
+`analyze_log()` runs under a wall-clock ceiling, `ANALYSIS_TIME_BUDGET_SECONDS`
+(default 45). The analyzer checks the deadline inside its scan loops and,
+if the budget is exceeded, the request returns HTTP 413 with a message
+asking for a smaller or less repetitive log rather than letting the worker
+keep burning CPU behind a connection the reverse proxy has already timed
+out. Keep the budget below Nginx's `proxy_read_timeout` (default 60s).
+The underlying quadratic cost is tracked for a proper fix alongside the
+normalized-event-schema refactor.
 
 ## Upload Rate Limiting
 

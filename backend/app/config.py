@@ -105,12 +105,25 @@ CORS_ORIGINS = [
 
 MAX_FILE_SIZE_MB = _get_int_env(
     "MAX_FILE_SIZE_MB",
-    default=25,
+    default=5,
     minimum=1,
     maximum=100,
 )
 
 MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+
+# Hard wall-clock ceiling for a single analyze_log() call. The detection
+# engine has quadratic worst-case behaviour (see the correlation pass in
+# app/services/analyzer.py), so a large, detection-dense log can otherwise
+# pin a worker for minutes behind a client that nginx already timed out.
+# Keep this below the reverse proxy's proxy_read_timeout (nginx default
+# 60s) so the backend returns a clean error before the connection drops.
+ANALYSIS_TIME_BUDGET_SECONDS = _get_int_env(
+    "ANALYSIS_TIME_BUDGET_SECONDS",
+    default=45,
+    minimum=1,
+    maximum=600,
+)
 
 ALLOWED_EXTENSIONS = {
     ".txt",
