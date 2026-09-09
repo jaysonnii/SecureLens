@@ -14,7 +14,9 @@ Read `README.md` for architecture, stack, and setup. This file covers what the c
 
 **Every conclusion traces to evidence.** Findings link to source lines. Risk scores show their arithmetic (per-finding points, reason, pre-cap total, post-cap total). Future correlations must explain *why* events were grouped, not just that they were.
 
-**Upload validation is a security boundary.** UTF-8 required; size cap of `MAX_FILE_SIZE_MB` (default 25, configurable 1–100) enforced by the backend and the effective ceiling — the Compose Nginx allows 110 MB so it never pre-empts the backend's error; bounded 64 KB chunk reads; rejection after the first byte past the limit; extension allowlist. Don't relax these for feature convenience — see the EVTX note below.
+**Upload validation is a security boundary.** UTF-8 required; size cap of `MAX_FILE_SIZE_MB` (default 25, configurable 1–100) enforced by the backend; bounded 64 KB chunk reads; rejection after the first byte past the limit; extension allowlist. Don't relax these for feature convenience — see the EVTX note below.
+
+Starlette buffers the whole multipart body (spooling to the backend's `/tmp`) before that check runs, so the Compose stack has two guards in front of it: Nginx `client_max_body_size 28m` (just above the 25 MB default), and `/tmp` mounted `tmpfs,size=64m`. Consequence: raising `MAX_FILE_SIZE_MB` above ~27 means Nginx returns a stock 413 before the backend sees the request — raise `client_max_body_size` and the tmpfs `size=` to match and rebuild the frontend image. See DEPLOYMENT.md "Upload Size".
 
 ## Conventions
 
