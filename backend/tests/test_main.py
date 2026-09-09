@@ -141,6 +141,29 @@ def test_oversized_file():
 
     assert response.status_code == 413
 
+
+def test_analysis_over_time_budget_returns_clean_error(monkeypatch):
+    import app.routers.uploads as uploads
+
+    def _slow_analyze(*args, **kwargs):
+        raise uploads.AnalysisTimeout
+
+    monkeypatch.setattr(uploads, "analyze_log", _slow_analyze)
+
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "dense.log",
+                b"Event ID: 4625 Failed logon for user jsmith\n",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+    assert "time budget" in response.json()["detail"]
+
 def test_upload_returns_capped_score_breakdown():
     log_content = b"""
     Event ID: 4625 Failed logon for user jsmith
@@ -281,6 +304,28 @@ def test_invalid_json_upload_returns_400():
     assert "invalid near line" in (
         response.json()["detail"]
     ).lower()
+
+
+def test_deeply_nested_json_upload_returns_400_not_500():
+    # Past MAX_JSON_NESTING_DEPTH (100); the O(n) pre-scan rejects it
+    # before json.loads(), so a small payload is enough.
+    payload = (
+        ('{"a":' * 200) + "1" + ("}" * 200)
+    ).encode()
+
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "nested.json",
+                payload,
+                "application/json",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert "deeply" in response.json()["detail"].lower()
 
 
 def test_limited_reader_stops_after_limit_without_unbounded_read():

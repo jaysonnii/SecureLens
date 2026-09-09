@@ -11,7 +11,7 @@ const MAX_FILE_SIZE_MB = Math.min(
   100,
   Math.max(
     1,
-    Number(import.meta.env.VITE_MAX_FILE_SIZE_MB) || 25
+    Number(import.meta.env.VITE_MAX_FILE_SIZE_MB) || 5
   )
 );
 const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;

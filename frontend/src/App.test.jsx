@@ -149,7 +149,7 @@ describe("SecureLens App", () => {
 
     expect(
       screen.getByText(
-        "TXT, LOG, CSV or JSON · Maximum 25 MB"
+        "TXT, LOG, CSV or JSON · Maximum 5 MB"
       )
     ).toBeInTheDocument();
 

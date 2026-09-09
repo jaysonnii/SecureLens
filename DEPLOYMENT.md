@@ -8,7 +8,9 @@ SecureLens includes a production-like Docker Compose stack containing:
 - Per-IP rate limiting on `POST /upload`
 - Container health checks
 - Environment-controlled CORS and API documentation
-- An Nginx request-body ceiling above the backend's maximum, so the app returns the size error
+- An Nginx request-body ceiling just above the default upload size, so unvalidated bodies never buffer to the backend
+- Wall-clock budgets on analysis and the AI call so a request cannot outlive the reverse proxy's read timeout
+- Container resource limits (memory, PIDs, CPU) and dropped Linux capabilities
 - Browser security headers
 - A non-root backend container
 - Automated full-stack container smoke tests
@@ -72,12 +74,62 @@ When deploying the frontend and backend on different origins, set `CORS_ORIGINS`
 ## Upload Size
 
 The backend is the single source of truth for the upload size limit:
-`MAX_FILE_SIZE_MB` (default 25, range 1–100). Nginx's `client_max_body_size`
-in `frontend/nginx.conf` is fixed at `110m` — above the 100 MB backend
-maximum plus multipart overhead — so an oversized upload is always rejected
-by the backend with its JSON error, never by a raw Nginx 413. Changing
-`MAX_FILE_SIZE_MB` needs no matching Nginx change as long as it stays within
-the supported range.
+`MAX_FILE_SIZE_MB` (default 5, range 1–100). The default is deliberately
+low: the deterministic analyzer has quadratic worst-case cost, and a
+detection-dense log near 25 MB can occupy a worker for minutes. A 5 MB
+detection-dense log analyzes in about 10 seconds; the
+`ANALYSIS_TIME_BUDGET_SECONDS` ceiling (see below) backstops the rest.
+
+Starlette's multipart parser buffers the entire request body — spooling to
+the backend container's `/tmp` — *before* the handler's streaming size
+check runs. To keep an unvalidated body from ever reaching that spool,
+Nginx's `client_max_body_size` in `frontend/nginx.conf` is set to `8m`:
+just above the 5 MB default plus multipart framing. Uploads up to ~7 MB
+still reach the backend and get its JSON size error; larger ones are cut
+off at Nginx with a 413. The backend container also mounts `/tmp` as a
+`tmpfs` capped at `size=16m` (see `compose.yaml`) so the spool has a hard
+ceiling regardless of Nginx.
+
+**If you raise `MAX_FILE_SIZE_MB` above ~7**, an upload between the new
+limit and the old one is rejected by Nginx with its stock 413 HTML page
+instead of the backend's JSON error, and an upload larger than `8m` never
+reaches the backend at all. To support a higher limit, also:
+
+1. raise `client_max_body_size` in `frontend/nginx.conf` to about
+   `MAX_FILE_SIZE_MB + 3m`,
+2. raise the backend `tmpfs` `size=` in `compose.yaml` past the new
+   maximum,
+3. rebuild the frontend image (`docker compose build frontend`) — the
+   config is baked in at build time, and
+4. confirm a worst-case log of the new size still fits the request-time
+   budget below, or raise the relevant ceiling (keeping the sum below the
+   reverse proxy's read timeout).
+
+## Request Time Budget
+
+A single `POST /upload` has three timed phases that must sum to less than
+Nginx's `proxy_read_timeout` (default 60s):
+
+| Phase | Ceiling | Worst case measured (5 MB input) |
+|---|---|---|
+| `parse_log_content` | none (bounded by the 5 MB cap) | ~1.2s (wide CSV) |
+| `analyze_log` | `ANALYSIS_TIME_BUDGET_SECONDS` (default 40) | 40s, then HTTP 413 |
+| `generate_ai_summary` | `OPENAI_TIMEOUT_SECONDS` (default 12, no retries) | 0s with AI disabled; ~12s then local fallback if the OpenAI call stalls |
+
+Worst-case total ≈ 1 + 40 + 12 + ~2 overhead ≈ **55s**, leaving headroom
+under 60s. With `AI_SUMMARY_ENABLED=false` (the default) the third phase
+is effectively free.
+
+`analyze_log()` checks its deadline inside its scan loops; over budget it
+returns HTTP 413 asking for a smaller or less repetitive log rather than
+letting the worker keep burning CPU behind a dropped connection. The
+OpenAI client is constructed with an explicit timeout and no retries, so
+a stalled API call falls back to the local summary within the ceiling.
+
+If you change `MAX_FILE_SIZE_MB`, `ANALYSIS_TIME_BUDGET_SECONDS`, or
+`OPENAI_TIMEOUT_SECONDS`, re-check that the three phases still sum below
+the proxy timeout. The analyzer's underlying quadratic cost is tracked
+for a proper fix alongside the normalized-event-schema refactor.
 
 ## Upload Rate Limiting
 

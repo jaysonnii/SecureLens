@@ -5,11 +5,12 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.config import (
     ALLOWED_EXTENSIONS,
+    ANALYSIS_TIME_BUDGET_SECONDS,
     MAX_FILE_SIZE,
     MAX_FILE_SIZE_MB,
 )
 from app.services.ai_summary import generate_ai_summary
-from app.services.analyzer import analyze_log
+from app.services.analyzer import AnalysisTimeout, analyze_log
 from app.services.log_parser import (
     LogParseError,
     parse_log_content,
@@ -96,9 +97,21 @@ async def upload_file(file: UploadFile = File(...)):
             detail=str(error),
         ) from error
 
-    analysis = analyze_log(
-        parsed_log.analysis_text
-    )
+    try:
+        analysis = analyze_log(
+            parsed_log.analysis_text,
+            time_budget_seconds=ANALYSIS_TIME_BUDGET_SECONDS,
+        )
+    except AnalysisTimeout as error:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "This log is too large or too detection-dense to "
+                "analyze within the time budget. Upload a smaller "
+                "or less repetitive log."
+            ),
+        ) from error
+
     ai_summary = await generate_ai_summary(analysis)
     return {
         "analyzed_at": (

@@ -139,6 +139,33 @@ def test_invalid_json_raises_safe_error():
         )
 
 
+def test_deeply_nested_json_document_raises_safe_error():
+    # Just past MAX_JSON_NESTING_DEPTH (100): the O(n) pre-scan rejects
+    # this before json.loads() is called, so the payload need not be huge.
+    payload = ('{"a":' * 200) + "1" + ("}" * 200)
+
+    with pytest.raises(LogParseError, match="deeply"):
+        parse_log_content(payload, ".json")
+
+
+def test_deeply_nested_json_lines_entry_raises_safe_error():
+    deep_line = ('{"a":' * 200) + "1" + ("}" * 200)
+    text = '{"Id": 4625}\n' + deep_line
+
+    with pytest.raises(LogParseError, match="deeply"):
+        parse_log_content(text, ".json")
+
+
+def test_json_nested_at_the_limit_is_still_parsed():
+    # Depth exactly at the limit must not be rejected by the pre-scan.
+    payload = ('{"a":' * 100) + "1" + ("}" * 100)
+
+    result = parse_log_content(payload, ".json")
+
+    assert result.input_format == "json"
+    assert result.record_count == 1
+
+
 def test_json_array_requires_object_records():
     with pytest.raises(
         LogParseError,

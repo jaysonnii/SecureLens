@@ -105,12 +105,27 @@ CORS_ORIGINS = [
 
 MAX_FILE_SIZE_MB = _get_int_env(
     "MAX_FILE_SIZE_MB",
-    default=25,
+    default=5,
     minimum=1,
     maximum=100,
 )
 
 MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024
+
+# Hard wall-clock ceiling for a single analyze_log() call. The detection
+# engine has quadratic worst-case behaviour (see the correlation pass in
+# app/services/analyzer.py), so a large, detection-dense log can otherwise
+# pin a worker for minutes behind a client that nginx already timed out.
+# This is only one phase of the request: parsing runs before it (~1s
+# worst case on a 5 MB file) and the AI summary after it (bounded by
+# OPENAI_TIMEOUT_SECONDS). The three plus overhead must stay under the
+# reverse proxy's proxy_read_timeout (nginx default 60s): 40 + 12 + ~2.
+ANALYSIS_TIME_BUDGET_SECONDS = _get_int_env(
+    "ANALYSIS_TIME_BUDGET_SECONDS",
+    default=40,
+    minimum=1,
+    maximum=600,
+)
 
 ALLOWED_EXTENSIONS = {
     ".txt",
@@ -158,4 +173,16 @@ OPENAI_MODEL = os.getenv(
 AI_SUMMARY_ENABLED = _get_bool_env(
     "AI_SUMMARY_ENABLED",
     default=False,
+)
+
+# Hard ceiling on the OpenAI call, which runs after analyze_log() and is
+# otherwise only bounded by the SDK default (600s). Parsing + the
+# analysis budget + this + overhead must stay under the reverse proxy's
+# proxy_read_timeout (nginx default 60s). A timeout here falls back to
+# the local summary, same as any other AI failure.
+OPENAI_TIMEOUT_SECONDS = _get_int_env(
+    "OPENAI_TIMEOUT_SECONDS",
+    default=12,
+    minimum=1,
+    maximum=120,
 )

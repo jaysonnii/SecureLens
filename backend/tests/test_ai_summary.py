@@ -171,8 +171,9 @@ def test_enabled_ai_returns_generated_summary(
             )
 
     class FakeClient:
-        def __init__(self, api_key):
-            captured["api_key"] = api_key
+        def __init__(self, **kwargs):
+            captured["client_kwargs"] = kwargs
+            captured["api_key"] = kwargs.get("api_key")
             self.responses = FakeResponses()
 
     monkeypatch.setattr(
@@ -215,6 +216,11 @@ def test_enabled_ai_returns_generated_summary(
     assert captured["model"] == "gpt-5-mini"
     assert captured["store"] is False
 
+    assert captured["client_kwargs"]["timeout"] == (
+        ai_summary_service.config.OPENAI_TIMEOUT_SECONDS
+    )
+    assert captured["client_kwargs"]["max_retries"] == 0
+
 
 def test_openai_failure_returns_local_fallback(
     caplog,
@@ -241,7 +247,7 @@ def test_openai_failure_returns_local_fallback(
             raise RuntimeError("Simulated API failure")
 
     class FailingClient:
-        def __init__(self, api_key):
+        def __init__(self, **kwargs):
             self.responses = FailingResponses()
 
     monkeypatch.setattr(
@@ -316,7 +322,7 @@ def test_empty_openai_response_logs_fallback(
             )
 
     class EmptyClient:
-        def __init__(self, api_key):
+        def __init__(self, **kwargs):
             self.responses = EmptyResponses()
 
     monkeypatch.setattr(

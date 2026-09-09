@@ -1,8 +1,23 @@
 import re
+import time
 
 
 MAX_EVIDENCE_LINES = 3
 MAX_EVIDENCE_LENGTH = 240
+
+# How often the O(n) and O(n^2) scan loops check the wall-clock deadline.
+# time.monotonic() is cheap, but there is no reason to call it every
+# iteration over a multi-million-pair correlation sweep.
+_DEADLINE_CHECK_INTERVAL = 2048
+
+
+class AnalysisTimeout(Exception):
+    """Raised when analyze_log() exceeds its wall-clock time budget."""
+
+
+def _check_deadline(deadline: float | None) -> None:
+    if deadline is not None and time.monotonic() > deadline:
+        raise AnalysisTimeout
 
 
 FAILED_LOGIN_TERMS = (
@@ -182,10 +197,14 @@ def _find_matches(
     lines: list[str],
     terms: tuple[str, ...] = (),
     event_ids: tuple[int, ...] = (),
+    deadline: float | None = None,
 ) -> list[tuple[int, str]]:
     matches = []
 
     for index, line in enumerate(lines):
+        if index % _DEADLINE_CHECK_INTERVAL == 0:
+            _check_deadline(deadline)
+
         cleaned_line = " ".join(line.split())
 
         if not cleaned_line:
@@ -199,12 +218,16 @@ def _find_matches(
 
 def _build_event_blocks(
     lines: list[str],
+    deadline: float | None = None,
 ) -> list[tuple[int, str]]:
     blocks = []
     current_index = None
     current_parts = []
 
     for index, line in enumerate(lines):
+        if index % _DEADLINE_CHECK_INTERVAL == 0:
+            _check_deadline(deadline)
+
         cleaned_line = " ".join(line.split())
 
         if not cleaned_line:
@@ -361,6 +384,7 @@ def _events_correlate(
 def _find_login_sequence(
     failed_matches: list[tuple[int, str]],
     successful_matches: list[tuple[int, str]],
+    deadline: float | None = None,
 ) -> (
     tuple[
         list[tuple[int, str]],
@@ -369,6 +393,11 @@ def _find_login_sequence(
     | None
 ):
     for success_match in successful_matches:
+        # Checked every iteration, not every _DEADLINE_CHECK_INTERVAL: the
+        # inner comprehension below is O(failed_matches) with regex work
+        # per pair, so a single outer step can be milliseconds.
+        _check_deadline(deadline)
+
         success_index, success_line = success_match
 
         matching_failures = [
@@ -389,26 +418,39 @@ def _find_login_sequence(
     return None
 
 
-def analyze_log(log_text: str) -> dict:
+def analyze_log(
+    log_text: str,
+    *,
+    time_budget_seconds: float | None = None,
+) -> dict:
+    deadline = (
+        time.monotonic() + time_budget_seconds
+        if time_budget_seconds is not None
+        else None
+    )
+
     lines = log_text.splitlines()
-    event_blocks = _build_event_blocks(lines)
+    event_blocks = _build_event_blocks(lines, deadline)
 
     failed_matches = _find_matches(
         lines,
         terms=FAILED_LOGIN_TERMS,
         event_ids=(4625,),
+        deadline=deadline,
     )
 
     successful_matches = _find_matches(
         lines,
         terms=SUCCESSFUL_LOGIN_TERMS,
         event_ids=(4624,),
+        deadline=deadline,
     )
 
     powershell_matches = _find_matches(
         lines,
         terms=POWERSHELL_TERMS,
         event_ids=(4104,),
+        deadline=deadline,
     )
 
     suspicious_powershell_matches = [
@@ -423,12 +465,14 @@ def analyze_log(log_text: str) -> dict:
     administrator_matches = _find_matches(
         lines,
         terms=ADMINISTRATOR_TERMS,
+        deadline=deadline,
     )
 
     cleared_log_matches = _find_matches(
         lines,
         terms=CLEARED_LOG_TERMS,
         event_ids=(1102,),
+        deadline=deadline,
     )
 
     account_lockout_matches = _find_event_blocks(
@@ -632,6 +676,7 @@ def analyze_log(log_text: str) -> dict:
     login_sequence = _find_login_sequence(
         failed_matches,
         successful_matches,
+        deadline,
     )
 
     if login_sequence:
