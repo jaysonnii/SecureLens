@@ -46,6 +46,12 @@ LEVEL_KEYS = {
     "severity",
 }
 
+# Maximum object/array nesting we will hand to json.loads(). Real event
+# logs nest a handful of levels deep; anything past this is a malformed or
+# hostile payload. Enforced by an O(n) pre-scan (below) so a deep document
+# never reaches the parser's recursive descent and exhausts the C stack.
+MAX_JSON_NESTING_DEPTH = 100
+
 
 class LogParseError(ValueError):
     """Raised when a structured log cannot be parsed safely."""
@@ -56,6 +62,43 @@ class ParsedLog:
     analysis_text: str
     input_format: str
     record_count: int
+
+
+def _exceeds_max_nesting(text: str, limit: int) -> bool:
+    """Return True if bracket nesting in `text` ever goes past `limit`.
+
+    A single linear pass that ignores brackets inside JSON strings
+    (honouring backslash escapes). Uses no recursion and touches no
+    interpreter stack, so it is safe on payloads that would blow up
+    json.loads().
+    """
+
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for char in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{" or char == "[":
+            depth += 1
+
+            if depth > limit:
+                return True
+        elif char == "}" or char == "]":
+            if depth > 0:
+                depth -= 1
+
+    return False
 
 
 def _normalized_key(value: str) -> str:
@@ -298,6 +341,16 @@ def _records_from_json_payload(
 def _parse_json_records(
     text: str,
 ) -> list[dict[str, Any]]:
+    # Reject pathological nesting before json.loads() sees it: the parser
+    # recurses per level and a deep payload exhausts the C stack, leaving
+    # the interpreter too close to the edge for the next deep operation
+    # (traceback formatting, response serialization) to survive. The
+    # RecursionError catches below stay as a backstop only.
+    if _exceeds_max_nesting(text, MAX_JSON_NESTING_DEPTH):
+        raise LogParseError(
+            "The JSON file is nested too deeply to parse."
+        )
+
     try:
         payload = json.loads(text)
     except RecursionError as error:

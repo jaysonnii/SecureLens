@@ -307,8 +307,10 @@ def test_invalid_json_upload_returns_400():
 
 
 def test_deeply_nested_json_upload_returns_400_not_500():
+    # Past MAX_JSON_NESTING_DEPTH (100); the O(n) pre-scan rejects it
+    # before json.loads(), so a small payload is enough.
     payload = (
-        ('{"a":' * 100000) + "1" + ("}" * 100000)
+        ('{"a":' * 200) + "1" + ("}" * 200)
     ).encode()
 
     response = client.post(
