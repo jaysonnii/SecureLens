@@ -107,7 +107,7 @@ def test_suspicious_powershell_activity():
         "T1059.001 - PowerShell"
     )
     assert finding["evidence"] == [
-        {"line_number": 1, "text": log_line}
+        {"line_number": 1, "text": log_line, "timestamp": None}
     ]
 
 
@@ -133,7 +133,7 @@ def test_windows_security_log_cleared():
         "T1685.005 - Clear Windows Event Logs"
     )
     assert finding["evidence"] == [
-        {"line_number": 1, "text": log_line}
+        {"line_number": 1, "text": log_line, "timestamp": None}
     ]
 
 
@@ -156,9 +156,9 @@ def test_evidence_is_unique_and_limited_to_three_lines():
     assert finding["count"] == 5
     assert finding["severity"] == "High"
     assert finding["evidence"] == [
-        {"line_number": 2, "text": "Failed login from 10.0.0.1"},
-        {"line_number": 4, "text": "Failed login from 10.0.0.2"},
-        {"line_number": 5, "text": "Failed login from 10.0.0.3"},
+        {"line_number": 2, "text": "Failed login from 10.0.0.1", "timestamp": None},
+        {"line_number": 4, "text": "Failed login from 10.0.0.2", "timestamp": None},
+        {"line_number": 5, "text": "Failed login from 10.0.0.3", "timestamp": None},
     ]
 
 def test_evidence_line_number_is_the_first_occurrence_of_a_deduped_line():
@@ -175,7 +175,7 @@ def test_evidence_line_number_is_the_first_occurrence_of_a_deduped_line():
 
     assert finding["count"] == 3
     assert finding["evidence"] == [
-        {"line_number": 2, "text": "Failed login from 10.0.0.1"},
+        {"line_number": 2, "text": "Failed login from 10.0.0.1", "timestamp": None},
     ]
 
 
@@ -271,6 +271,100 @@ def test_login_sequence_uses_actual_success_evidence():
             "for user alice Source IP: 10.0.0.1"
         ),
     ]
+
+
+def test_evidence_parses_iso_timestamp_with_explicit_offset():
+    result = analyze_log(
+        "2026-08-01T14:01:03+05:30 Event ID: 4625 Failed logon"
+    )
+
+    finding = get_finding(result, "Failed Login Attempts")
+    timestamp = finding["evidence"][0]["timestamp"]
+
+    assert timestamp == {
+        "original": "2026-08-01T14:01:03+05:30",
+        # Converted to UTC: 14:01:03 +05:30 -> 08:31:03Z.
+        "utc": "2026-08-01T08:31:03Z",
+        "timezone_assumed": False,
+    }
+
+
+def test_evidence_parses_iso_timestamp_with_z_suffix():
+    result = analyze_log(
+        "2026-08-01T14:01:03Z Event ID: 4625 Failed logon"
+    )
+
+    finding = get_finding(result, "Failed Login Attempts")
+    timestamp = finding["evidence"][0]["timestamp"]
+
+    assert timestamp == {
+        "original": "2026-08-01T14:01:03Z",
+        "utc": "2026-08-01T14:01:03Z",
+        "timezone_assumed": False,
+    }
+
+
+def test_evidence_flags_assumed_timezone_when_offset_is_missing():
+    # Space-separated, no offset at all - a common Windows Event Viewer
+    # export style, and genuinely ambiguous about which timezone it's in.
+    result = analyze_log(
+        "2026-08-01 14:01:03 Event ID: 4625 Failed logon"
+    )
+
+    finding = get_finding(result, "Failed Login Attempts")
+    timestamp = finding["evidence"][0]["timestamp"]
+
+    assert timestamp == {
+        "original": "2026-08-01 14:01:03",
+        "utc": "2026-08-01T14:01:03Z",
+        "timezone_assumed": True,
+    }
+
+
+def test_evidence_parses_dotnet_windows_date():
+    # 1690714860000 ms since epoch = 2023-07-30T11:01:00Z.
+    result = analyze_log(
+        "/Date(1690714860000)/ Event ID: 4625 Failed logon"
+    )
+
+    finding = get_finding(result, "Failed Login Attempts")
+    timestamp = finding["evidence"][0]["timestamp"]
+
+    assert timestamp == {
+        "original": "/Date(1690714860000)/",
+        "utc": "2023-07-30T11:01:00Z",
+        "timezone_assumed": False,
+    }
+
+
+def test_evidence_timestamp_is_null_when_nothing_matches():
+    cases = [
+        # Bare time, no date - the exact trap that got the timeline
+        # dropped (see issue #35).
+        "10:01:04 Event ID: 4625 Failed logon",
+        # Syslog style: no year.
+        "Jul 30 10:01:00 Event ID: 4625 Failed logon",
+        # No leading timestamp at all.
+        "Event ID: 4625 Failed logon",
+    ]
+
+    for log_line in cases:
+        result = analyze_log(log_line)
+        finding = get_finding(result, "Failed Login Attempts")
+
+        assert finding["evidence"][0]["timestamp"] is None, log_line
+
+
+def test_evidence_timestamp_is_null_for_an_invalid_iso_shaped_value():
+    # Shaped like ISO 8601 but not a real date/time - return null
+    # rather than let a plausible-looking string produce a wrong value.
+    result = analyze_log(
+        "2026-13-40T99:99:99Z Event ID: 4625 Failed logon"
+    )
+
+    finding = get_finding(result, "Failed Login Attempts")
+
+    assert finding["evidence"][0]["timestamp"] is None
 
 
 def test_time_budget_allows_normal_analysis():

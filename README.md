@@ -72,7 +72,9 @@ The response also reports `analysis_duration_seconds`: wall-clock time spent in 
 
 ### Evidence-Focused Findings
 
-Each finding can include its type, severity, detection count, MITRE ATT&CK mapping, up to three evidence entries, and a recommended analyst action. Each evidence entry is `{line_number, text}` - the 1-indexed source line, and the matched text (deduped by content and truncated to 240 characters). When several source lines are identical after normalization, the line number reported is the first occurrence.
+Each finding can include its type, severity, detection count, MITRE ATT&CK mapping, up to three evidence entries, and a recommended analyst action. Each evidence entry is `{line_number, text, timestamp}` - the 1-indexed source line, the matched text (deduped by content and truncated to 240 characters), and a parsed timestamp where one could be read without guessing. When several source lines are identical after normalization, the line number reported is the first occurrence.
+
+`timestamp` is `null` when nothing at the start of the line could be confidently parsed, or `{original, utc, timezone_assumed}` when it could. Supported today: ISO 8601 (with or without a `Z`/offset) and the `/Date(milliseconds)/` format some PowerShell JSON exports use for `DateTime` fields. `timezone_assumed` is `true` only when an ISO timestamp had no explicit offset (UTC is assumed, not read) - never for `/Date()/`, which is always an absolute instant. Deliberately not supported, because each would require guessing rather than reading: bare `HH:MM:SS` with no date, syslog's year-less `MMM DD HH:MM:SS`, locale-ambiguous `MM/DD/YYYY`, and Unix epoch numbers appearing as plain text (epoch values in a structured JSON/CSV time column are recognized during parsing, just not yet threaded through to evidence).
 
 ### Optional AI Summary
 
