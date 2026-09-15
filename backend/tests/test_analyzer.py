@@ -11,6 +11,10 @@ def get_finding(result: dict, finding_type: str) -> dict:
     )
 
 
+def evidence_texts(finding: dict) -> list[str]:
+    return [entry["text"] for entry in finding["evidence"]]
+
+
 def test_benign_log_returns_low_risk():
     result = analyze_log(
         """
@@ -102,7 +106,9 @@ def test_suspicious_powershell_activity():
     assert finding["mitre_attack"] == (
         "T1059.001 - PowerShell"
     )
-    assert finding["evidence"] == [log_line]
+    assert finding["evidence"] == [
+        {"line_number": 1, "text": log_line}
+    ]
 
 
 def test_windows_security_log_cleared():
@@ -126,7 +132,9 @@ def test_windows_security_log_cleared():
     assert finding["mitre_attack"] == (
         "T1685.005 - Clear Windows Event Logs"
     )
-    assert finding["evidence"] == [log_line]
+    assert finding["evidence"] == [
+        {"line_number": 1, "text": log_line}
+    ]
 
 
 def test_evidence_is_unique_and_limited_to_three_lines():
@@ -148,10 +156,28 @@ def test_evidence_is_unique_and_limited_to_three_lines():
     assert finding["count"] == 5
     assert finding["severity"] == "High"
     assert finding["evidence"] == [
-        "Failed login from 10.0.0.1",
-        "Failed login from 10.0.0.2",
-        "Failed login from 10.0.0.3",
+        {"line_number": 2, "text": "Failed login from 10.0.0.1"},
+        {"line_number": 4, "text": "Failed login from 10.0.0.2"},
+        {"line_number": 5, "text": "Failed login from 10.0.0.3"},
     ]
+
+def test_evidence_line_number_is_the_first_occurrence_of_a_deduped_line():
+    result = analyze_log(
+        """
+        Failed login from 10.0.0.1
+        Some unrelated line
+        Failed login from 10.0.0.1
+        Failed login from 10.0.0.1
+        """
+    )
+
+    finding = get_finding(result, "Failed Login Attempts")
+
+    assert finding["count"] == 3
+    assert finding["evidence"] == [
+        {"line_number": 2, "text": "Failed login from 10.0.0.1"},
+    ]
+
 
 def test_score_breakdown_explains_contributions_and_cap():
     result = analyze_log(
@@ -231,7 +257,7 @@ def test_login_sequence_uses_actual_success_evidence():
     assert result["risk_score"] == 60
     assert result["total_findings"] == 2
 
-    assert finding["evidence"] == [
+    assert evidence_texts(finding) == [
         (
             "10:02 Event ID: 4625 Failed logon "
             "for user alice Source IP: 10.0.0.1"

@@ -92,7 +92,10 @@ def test_ai_input_excludes_evidence_and_raw_log_content():
                 "mitre_attack": "T1059.001 - PowerShell",
                 "recommendation": "Review the command.",
                 "evidence": [
-                    "powershell.exe -EncodedCommand SECRETDATA"
+                    {
+                        "line_number": 1,
+                        "text": "powershell.exe -EncodedCommand SECRETDATA",
+                    }
                 ],
             }
         ],

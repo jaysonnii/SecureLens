@@ -70,7 +70,7 @@ SecureLens returns the points added by each finding, the reason for each score c
 
 ### Evidence-Focused Findings
 
-Each finding can include its type, severity, detection count, MITRE ATT&CK mapping, up to three evidence lines, and a recommended analyst action.
+Each finding can include its type, severity, detection count, MITRE ATT&CK mapping, up to three evidence entries, and a recommended analyst action. Each evidence entry is `{line_number, text}` - the 1-indexed source line, and the matched text (deduped by content and truncated to 240 characters). When several source lines are identical after normalization, the line number reported is the first occurrence.
 
 ### Optional AI Summary
 

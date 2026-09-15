@@ -519,8 +519,11 @@ function Results({ data, onReset }) {
                 <div className="sl-body">
                   <p className="sl-reason">{item.reason}</p>
                   <ul className="sl-evidence">
-                    {item.evidence.map((line, i) => (
-                      <li key={i}>{line}</li>
+                    {item.evidence.map((entry) => (
+                      <li key={entry.line_number}>
+                        <span className="sl-ln">{entry.line_number}</span>
+                        {entry.text}
+                      </li>
                     ))}
                   </ul>
                   {item.count !== undefined && (

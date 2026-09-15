@@ -275,18 +275,30 @@ def _find_event_blocks(
 
 def _create_evidence(
     matches: list[tuple[int, str]],
-) -> list[str]:
+) -> list[dict]:
+    # Evidence is deduped by lowercased content, so one kept entry can
+    # stand in for several source lines with the same text. We report
+    # the line number of the first occurrence: an analyst jumping to
+    # evidence wants *a* real location to start from, and the finding's
+    # `count` already says how many times it matched - a list of every
+    # duplicate's line number would just restate that count with extra
+    # steps while still capping at MAX_EVIDENCE_LINES distinct entries.
     evidence = []
     seen = set()
 
-    for _, line in matches:
+    for index, line in matches:
         comparison_value = line.lower()
 
         if comparison_value in seen:
             continue
 
         seen.add(comparison_value)
-        evidence.append(line[:MAX_EVIDENCE_LENGTH])
+        evidence.append(
+            {
+                "line_number": index + 1,
+                "text": line[:MAX_EVIDENCE_LENGTH],
+            }
+        )
 
         if len(evidence) == MAX_EVIDENCE_LINES:
             break
