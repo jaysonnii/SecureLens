@@ -46,8 +46,15 @@ services:
       args:
         VITE_API_URL: /api
         VITE_MAX_FILE_SIZE_MB: "${MAX_FILE_SIZE_MB:-5}"
-    ports:
-      - "${SECURELENS_BIND_ADDRESS:-127.0.0.1}:${SECURELENS_PORT:-8080}:80"
+    # No published host port: this stack is reached exclusively through
+    # the cloudflared sidecar below, over this internal network. Nothing
+    # outside Docker can reach nginx at all, which is what lets
+    # frontend/nginx.conf trust CF-Connecting-IP from the whole
+    # securelens subnet (see the comment there) instead of one pinned
+    # address - there's no host-published port for a client to reach
+    # nginx through except via that sidecar.
+    expose:
+      - "80"
     depends_on:
       backend:
         condition: service_healthy
@@ -70,6 +77,35 @@ services:
     networks:
       - securelens
 
+  # The only path into the stack: cloudflared makes an outbound
+  # connection to Cloudflare and proxies inbound requests to nginx at
+  # frontend:80 over this internal network. Gated behind a profile so a
+  # plain `docker compose up` (CI, local smoke testing) doesn't require a
+  # real tunnel token - start it deliberately with
+  # `docker compose --profile cloudflare-tunnel up -d` after setting
+  # CLOUDFLARE_TUNNEL_TOKEN in the root .env.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    profiles:
+      - cloudflare-tunnel
+    restart: unless-stopped
+    networks:
+      - securelens
+
 networks:
   securelens:
     driver: bridge
+    # Fixed subnet so frontend/nginx.conf can trust it by CIDR
+    # (set_real_ip_from) rather than a broad default range. Trusting this
+    # whole subnet - not one pinned address - is safe specifically
+    # because the frontend publishes no host port: nginx has no
+    # TCP-reachable path from outside Docker at all, so anything that can
+    # present CF-Connecting-IP to it already had to reach it over this
+    # network, which only our own containers (backend, frontend,
+    # cloudflared) join.
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

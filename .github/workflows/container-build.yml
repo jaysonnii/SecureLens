@@ -26,27 +26,88 @@ jobs:
         run: docker compose build
 
       - name: Start containers
+        env:
+          # Small enough to exercise the limit's boundary in a few
+          # requests without waiting out the window.
+          RATE_LIMIT_MAX_REQUESTS: "3"
         run: docker compose up -d --wait --wait-timeout 90
+
+      - name: Frontend publishes no host port
+        run: |
+          # The whole point of the sidecar topology: nginx must be
+          # unreachable except through cloudflared, over the internal
+          # network. If this ever succeeds, frontend/nginx.conf's
+          # subnet-wide CF-Connecting-IP trust (see its comment) is no
+          # longer safe and needs to go back to naming a single address.
+          if curl -s -o /dev/null -m 3 http://127.0.0.1:8080/ 2>/dev/null; then
+            echo "nginx answered on a host port that should not be published" >&2
+            exit 1
+          fi
+          echo "confirmed: nginx has no host-reachable port"
 
       - name: Smoke test full stack
         run: |
-          curl \
-            --fail \
-            --retry 20 \
-            --retry-delay 2 \
-            http://127.0.0.1:8080/
+          network="$(docker network ls --filter label=com.docker.compose.project=securelens --format '{{.Name}}')"
+          log="$PWD/examples/sample-security.log"
 
-          curl \
-            --fail \
-            --retry 20 \
-            --retry-delay 2 \
-            http://127.0.0.1:8080/api/health
+          net_curl() {
+            docker run --rm --network "$network" \
+              -v "$log:/sample-security.log:ro" \
+              --entrypoint curl \
+              curlimages/curl:latest \
+              "$@"
+          }
 
-          curl \
-            --fail \
-            --form "file=@examples/sample-security.log" \
-            http://127.0.0.1:8080/api/upload \
+          net_curl --fail --retry 20 --retry-delay 2 http://frontend:80/
+          net_curl --fail --retry 20 --retry-delay 2 http://frontend:80/api/health
+          net_curl --fail -F "file=@/sample-security.log" http://frontend:80/api/upload \
             | grep -q '"analysis"'
+
+      # Proves, through the real nginx + backend containers (not just the
+      # unit-level TestClient in backend/tests/test_upload_rate_limit.py),
+      # that two different client IPs get separate rate-limit buckets when
+      # asserted by CF-Connecting-IP over the trusted internal network -
+      # see the "Upload Rate Limiting" section in DEPLOYMENT.md for why
+      # this matters behind Cloudflare Tunnel. The previous "smoke test"
+      # step above already spent one request from an unpinned container,
+      # which does not share a client key with either bucket below.
+      - name: Full-stack test - CF-Connecting-IP rate-limit bucketing
+        run: |
+          network="$(docker network ls --filter label=com.docker.compose.project=securelens --format '{{.Name}}')"
+          log="$PWD/examples/sample-security.log"
+
+          run_curl() {
+            # $1 = CF-Connecting-IP header value to send. Trust here is
+            # subnet-wide (see frontend/nginx.conf), so no address
+            # pinning is needed - any container on this network is
+            # equally trusted.
+            docker run --rm --network "$network" \
+              -v "$log:/sample-security.log:ro" \
+              --entrypoint curl \
+              curlimages/curl:latest \
+              -s -o /dev/null -w '%{http_code}' \
+              -H "CF-Connecting-IP: $1" \
+              -F "file=@/sample-security.log" \
+              http://frontend:80/api/upload
+          }
+
+          assert_eq() {
+            if [ "$1" != "$2" ]; then
+              echo "expected HTTP $2, got $1 ($3)" >&2
+              exit 1
+            fi
+          }
+
+          # Client A uses up its window...
+          assert_eq "$(run_curl 203.0.113.10)" 200 "client A #1"
+          assert_eq "$(run_curl 203.0.113.10)" 200 "client A #2"
+          assert_eq "$(run_curl 203.0.113.10)" 200 "client A #3"
+          assert_eq "$(run_curl 203.0.113.10)" 429 "client A #4 (over limit)"
+          # ...while client B, asserted from the same trusted network,
+          # has a separate, untouched bucket.
+          assert_eq "$(run_curl 203.0.113.20)" 200 "client B #1 (separate bucket)"
+
+          echo "CF-Connecting-IP bucketing verified through the real stack."
 
       - name: Show container logs on failure
         if: failure()
