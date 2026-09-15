@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
+import { joinFindings } from "./joinFindings";
 
 const API_URL =
   import.meta.env.VITE_API_URL ??
@@ -23,6 +24,12 @@ const API_STATUS_LABELS = {
   offline: "API Offline",
 };
 
+const SEVERITY_COLOR = {
+  High: "#D4705F",
+  Medium: "#C9A227",
+  Low: "#8C8475",
+};
+
 function getExtension(filename) {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
@@ -39,30 +46,107 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-function formatAnalysisTime(value) {
-  const analysisDate = new Date(value);
+const ERRORS = {
+  tooLarge: {
+    title: `That file is over ${MAX_FILE_SIZE_MB} MB.`,
+    body: `SecureLens caps uploads at ${MAX_FILE_SIZE_MB} MB so one request can't tie up the analyzer. Split the log or trim it to the window you care about.`,
+    cta: "Choose another file",
+  },
+  encoding: {
+    title: "That file isn't UTF-8 text.",
+    body: "SecureLens reads text logs. If this came from Event Viewer, export it as CSV or XML first.",
+    cta: "Choose another file",
+  },
+  budget: {
+    title: "Analysis took too long.",
+    body: "Correlation cost grows sharply with the number of login events. A smaller slice of the same log will finish.",
+    cta: "Try a smaller file",
+  },
+  rateLimit: {
+    title: "Too many uploads.",
+    body: "Wait a moment and try again.",
+    cta: "Back",
+  },
+  unsupportedType: {
+    title: "Unsupported file type.",
+    body: "SecureLens accepts TXT, LOG, CSV, and JSON files.",
+    cta: "Choose another file",
+  },
+  empty: {
+    title: "That file is empty.",
+    body: "Choose a file that contains log data.",
+    cta: "Choose another file",
+  },
+  network: {
+    title: "Couldn't reach SecureLens.",
+    body: "The backend didn't respond. Check the API status above and try again.",
+    cta: "Try again",
+  },
+};
 
-  if (Number.isNaN(analysisDate.getTime())) {
-    return "Time unavailable";
+function genericError(detail) {
+  return {
+    title: "That upload didn't work.",
+    body: detail || "The server rejected the file for an unspecified reason.",
+    cta: "Choose another file",
+  };
+}
+
+// Maps a POST /upload failure to one of the known error screens. Both
+// the size cap and the analysis time budget return HTTP 413, so the two
+// are told apart by the detail text the backend actually sends (see
+// backend/app/routers/uploads.py and app/services/analyzer.py).
+function classifyServerError(status, detail) {
+  const lower = (detail || "").toLowerCase();
+
+  if (status === 413 && lower.includes("time budget")) {
+    return ERRORS.budget;
   }
 
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(analysisDate);
+  if (status === 413) {
+    return ERRORS.tooLarge;
+  }
+
+  if (status === 429) {
+    return detail ? { ...ERRORS.rateLimit, body: detail } : ERRORS.rateLimit;
+  }
+
+  if (status === 400 && lower.includes("utf-8")) {
+    return ERRORS.encoding;
+  }
+
+  return genericError(detail);
+}
+
+function validateFile(file) {
+  if (!file) {
+    return genericError("Please select a file.");
+  }
+
+  const extension = getExtension(file.name);
+
+  if (!ALLOWED_EXTENSIONS.includes(extension)) {
+    return ERRORS.unsupportedType;
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    return ERRORS.tooLarge;
+  }
+
+  if (file.size === 0) {
+    return ERRORS.empty;
+  }
+
+  return null;
 }
 
 function App() {
   const fileInputRef = useRef(null);
-  const uploadPanelRef = useRef(null);
 
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
-  const [error, setError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const [view, setView] = useState("idle"); // idle | working | error | done
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
   const [apiStatus, setApiStatus] = useState("checking");
-  const [copyStatus, setCopyStatus] = useState("idle");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -94,68 +178,19 @@ function App() {
     return () => controller.abort();
   }, []);
 
-  function validateFile(file) {
-    if (!file) {
-      return "Please select a file.";
-    }
-
-    const extension = getExtension(file.name);
-
-    if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      return "Only TXT, LOG, CSV, and JSON files are supported.";
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      return `The selected file is larger than ${MAX_FILE_SIZE_MB} MB.`;
-    }
-
-    if (file.size === 0) {
-      return "The selected file is empty.";
-    }
-
-    return "";
-  }
-
-  function chooseFile(file) {
+  async function analyze(file) {
     const validationError = validateFile(file);
-
-    setAnalysisResult(null);
-    setCopyStatus("idle");
-    setError(validationError);
-
-    if (validationError) {
-      setSelectedFile(null);
-      return;
-    }
-
-    setSelectedFile(file);
-  }
-
-  function handleFileInput(event) {
-    chooseFile(event.target.files?.[0]);
-  }
-
-  function handleDrop(event) {
-    event.preventDefault();
-    setIsDragging(false);
-
-    chooseFile(event.dataTransfer.files?.[0]);
-  }
-
-  async function analyzeFile() {
-    const validationError = validateFile(selectedFile);
 
     if (validationError) {
       setError(validationError);
+      setView("error");
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", selectedFile);
+    setView("working");
 
-    setIsLoading(true);
-    setError("");
-    setAnalysisResult(null);
+    const formData = new FormData();
+    formData.append("file", file);
 
     try {
       const response = await fetch(`${API_URL}/upload`, {
@@ -163,75 +198,174 @@ function App() {
         body: formData,
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => null);
 
       if (!response.ok) {
-        throw new Error(
-          data.detail || "The log could not be analyzed."
-        );
+        setError(classifyServerError(response.status, data?.detail));
+        setView("error");
+        return;
       }
 
-      setAnalysisResult(data);
-    } catch (requestError) {
-      setError(
-        requestError.message ||
-          "SecureLens could not connect to the backend."
-      );
-    } finally {
-      setIsLoading(false);
+      setResult(data);
+      setView("done");
+    } catch {
+      setError(ERRORS.network);
+      setView("error");
     }
   }
 
-  function clearFile() {
-    setSelectedFile(null);
-    setAnalysisResult(null);
-    setCopyStatus("idle");
-    setError("");
+  function reset() {
+    setView("idle");
+    setResult(null);
+    setError(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   }
 
-  function startNewAnalysis() {
-    clearFile();
+  return (
+    <div className="sl">
+      <header className="sl-top">
+        <span className="sl-brand">SecureLens</span>
+        <span
+          className={`sl-status ${apiStatus}`}
+          role="status"
+          aria-live="polite"
+        >
+          {API_STATUS_LABELS[apiStatus]}
+        </span>
+      </header>
 
-    uploadPanelRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }
+      <main className="sl-main">
+        {view === "idle" && (
+          <Upload onFile={analyze} inputRef={fileInputRef} />
+        )}
+        {view === "working" && <Working />}
+        {view === "error" && <Failure error={error} onRetry={reset} />}
+        {view === "done" && <Results data={result} onReset={reset} />}
+      </main>
 
-  async function copySha256Fingerprint() {
-    if (!analysisResult?.sha256) {
-      return;
-    }
+      <footer className="sl-foot">
+        <span>Nothing is stored. Files are analyzed in memory and discarded.</span>
+        <a href="https://github.com/jaysonnii/SecureLens">Source</a>
+      </footer>
+    </div>
+  );
+}
 
+/* ---------------------------------------------------------------- */
+
+function Upload({ onFile, inputRef }) {
+  const [over, setOver] = useState(false);
+
+  return (
+    <div className="sl-upload">
+      <h1>Find out what happened in your log.</h1>
+      <p className="sl-lede">
+        Upload a security log. SecureLens scores it, maps what it finds to
+        ATT&amp;CK, and shows the lines it based that on.
+      </p>
+
+      <div
+        className={"sl-drop" + (over ? " is-over" : "")}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setOver(false);
+          onFile(e.dataTransfer.files[0]);
+        }}
+        onClick={() => inputRef.current?.click()}
+        onKeyDown={(e) => e.key === "Enter" && inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+      >
+        <span className="sl-drop-main">Drop a log file here</span>
+        <span className="sl-drop-sub">
+          .log .txt .csv .json &nbsp;/&nbsp; up to {MAX_FILE_SIZE_MB} MB &nbsp;/&nbsp; UTF-8
+        </span>
+        <input
+          ref={inputRef}
+          id="log-file"
+          type="file"
+          accept=".log,.txt,.csv,.json"
+          hidden
+          onChange={(e) => onFile(e.target.files[0])}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Working() {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSecs((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  return (
+    <div className="sl-working">
+      <div className="sl-pulse" />
+      <p className="sl-working-main">Analyzing</p>
+      <p className="sl-meta">
+        {secs < 10
+          ? "Matching detection rules."
+          : secs < 25
+          ? "Correlating login sequences. Dense logs take longer."
+          : "Still working. This stops at 40 seconds."}
+      </p>
+    </div>
+  );
+}
+
+function Failure({ error, onRetry }) {
+  return (
+    <div className="sl-fail">
+      <h2>{error.title}</h2>
+      <p className="sl-lede">{error.body}</p>
+      <button className="sl-btn" onClick={onRetry}>
+        {error.cta}
+      </button>
+    </div>
+  );
+}
+
+function Results({ data, onReset }) {
+  const [open, setOpen] = useState(null);
+  const [copyStatus, setCopyStatus] = useState("idle");
+
+  const analysis = data.analysis;
+  const { items, orphaned } = joinFindings(
+    analysis.findings,
+    analysis.score_breakdown
+  );
+
+  const total = analysis.score_before_cap;
+  const capped = total > analysis.score_cap;
+  const scale = Math.max(total, analysis.score_cap);
+
+  async function copySha256() {
     try {
-      await navigator.clipboard.writeText(
-        analysisResult.sha256
-      );
+      await navigator.clipboard.writeText(data.sha256);
       setCopyStatus("copied");
     } catch {
       setCopyStatus("error");
     }
   }
 
-  function downloadAnalysisReport() {
-    if (!analysisResult) {
-      return;
-    }
+  function downloadReport() {
+    const safeFilename =
+      data.filename
+        .replace(/\.[^/.]+$/, "")
+        .replace(/[^a-z0-9-_]+/gi, "-")
+        .replace(/^-+|-+$/g, "") || "securelens-analysis";
 
-    const safeFilename = analysisResult.filename
-      .replace(/\.[^/.]+$/, "")
-      .replace(/[^a-z0-9-_]+/gi, "-")
-      .replace(/^-+|-+$/g, "")
-      || "securelens-analysis";
-
-    const reportData = {
-      ...analysisResult,
-    };
-
+    const reportData = { ...data };
     delete reportData.preview;
 
     const report = {
@@ -239,488 +373,197 @@ function App() {
       ...reportData,
     };
 
-    const reportBlob = new Blob(
-      [JSON.stringify(report, null, 2)],
-      {
-        type: "application/json",
-      }
-    );
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+      type: "application/json",
+    });
 
-    const downloadUrl = URL.createObjectURL(reportBlob);
-    const downloadLink = document.createElement("a");
-
-    downloadLink.href = downloadUrl;
-    downloadLink.download =
-      `${safeFilename}-securelens-report.json`;
-
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    downloadLink.remove();
-    URL.revokeObjectURL(downloadUrl);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilename}-securelens-report.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   }
 
-  const riskLevel =
-    analysisResult?.analysis?.risk_level ?? "";
-    
-  const aiSummary = analysisResult?.ai_summary;
-
-  const scoreBreakdown =
-    analysisResult?.analysis?.score_breakdown ?? [];
+  if (analysis.total_findings === 0) {
+    return (
+      <div className="sl-fail">
+        <h2>Nothing matched.</h2>
+        <p className="sl-lede">
+          None of the current detection rules fired on {data.filename}.
+          SecureLens covers failed logins, privilege use, PowerShell, and log
+          clearing. It does not cover everything.
+        </p>
+        <button className="sl-btn" onClick={onReset}>
+          Analyze another log
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-icon">S</div>
-
-          <div>
-            <h1>SecureLens</h1>
-            <p>Security Log Intelligence</p>
+    <div className="sl-results">
+      <div className="sl-file">
+        <h1>{data.filename}</h1>
+        <dl className="sl-facts">
+          <div><dt>Records analyzed</dt><dd>{data.records_analyzed.toLocaleString()}</dd></div>
+          <div><dt>Size</dt><dd>{formatFileSize(data.size_bytes)}</dd></div>
+          <div className="sl-fact-wide">
+            <dt>SHA-256</dt>
+            <dd title={data.sha256}>
+              {data.sha256.slice(0, 32)}...
+              <button className="sl-inline-btn" onClick={copySha256}>
+                {copyStatus === "copied"
+                  ? "Copied"
+                  : copyStatus === "error"
+                  ? "Copy failed"
+                  : "Copy"}
+              </button>
+            </dd>
           </div>
+        </dl>
+      </div>
+
+      <section className="sl-score">
+        <div className="sl-score-row">
+          <span className="sl-score-num">{Math.min(total, analysis.score_cap)}</span>
+          <span
+            className="sl-score-level"
+            style={{ color: SEVERITY_COLOR[analysis.risk_level] }}
+          >
+            {analysis.risk_level}
+          </span>
         </div>
 
         <div
-          className={`api-status ${apiStatus}`}
-          role="status"
-          aria-live="polite"
+          className="sl-bar"
+          role="img"
+          aria-label={`Risk ${Math.min(total, analysis.score_cap)} of ${analysis.score_cap}`}
         >
-          <span
-            className="status-dot"
-            aria-hidden="true"
-          />
-
-          {API_STATUS_LABELS[apiStatus]}
-        </div>
-      </header>
-
-      <main className="dashboard">
-        <section className="hero">
-          <span className="eyebrow">
-            AI-ready security analysis
-          </span>
-
-          <h2>Turn security logs into clear findings.</h2>
-
-          <p>
-            Upload a log file to identify suspicious activity,
-            calculate risk, map MITRE ATT&amp;CK techniques, and
-            receive recommended investigation steps.
-          </p>
-        </section>
-
-        <section
-          ref={uploadPanelRef}
-          className="panel upload-panel"
-        >
-          <div className="panel-heading">
-            <div>
-              <p className="section-label">Log upload</p>
-              <h3>Analyze a security log</h3>
-            </div>
-
-            <span className="file-rules">
-              TXT, LOG, CSV or JSON · Maximum {MAX_FILE_SIZE_MB} MB
-            </span>
-          </div>
-
-          <div
-            className={`drop-zone ${
-              isDragging ? "dragging" : ""
-            }`}
-            onDragEnter={() => setIsDragging(true)}
-            onDragLeave={() => setIsDragging(false)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={handleDrop}
-          >
-            <input
-              ref={fileInputRef}
-              id="log-file"
-              type="file"
-              accept=".txt,.log,.csv,.json"
-              onChange={handleFileInput}
-            />
-
-            <div className="upload-icon">↑</div>
-
-            <h4>Drop your log file here</h4>
-            <p>or select a file from your computer</p>
-
+          {items.map((item) => (
             <button
-              className="secondary-button"
-              type="button"
-              onClick={() =>
-                fileInputRef.current?.click()
-              }
+              key={item.id}
+              className={"sl-seg" + (open === item.id ? " is-open" : "")}
+              style={{
+                width: `${(item.points / scale) * 100}%`,
+                background: SEVERITY_COLOR[item.severity],
+              }}
+              onClick={() => setOpen(open === item.id ? null : item.id)}
+              title={`+${item.points} ${item.type}`}
+            />
+          ))}
+          {orphaned.map((entry, i) => (
+            <span
+              key={`orphan-${i}`}
+              className="sl-seg sl-seg-orphan"
+              style={{ width: `${(entry.points / scale) * 100}%` }}
+              title={`+${entry.points} ${entry.finding_type} (no matching finding data)`}
+            />
+          ))}
+          {capped && (
+            <span
+              className="sl-cap"
+              style={{ left: `${(analysis.score_cap / scale) * 100}%` }}
             >
-              Choose file
-            </button>
-          </div>
-
-          {selectedFile && (
-            <div className="selected-file">
-              <div>
-                <strong>{selectedFile.name}</strong>
-                <span>
-                  {formatFileSize(selectedFile.size)}
-                </span>
-              </div>
-
-              <button type="button" onClick={clearFile}>
-                Remove
-              </button>
-            </div>
+              <span className="sl-cap-label">{analysis.score_cap}</span>
+            </span>
           )}
+        </div>
 
-          {error && (
-            <div className="error-message">{error}</div>
-          )}
-
-          <button
-            className="primary-button"
-            type="button"
-            disabled={!selectedFile || isLoading}
-            onClick={analyzeFile}
-          >
-            {isLoading ? "Analyzing log..." : "Analyze log"}
-          </button>
-        </section>
-
-        {analysisResult && (
-          <section className="results">
-            <div className="results-heading">
-              <div>
-                <p className="section-label">
-                  Analysis complete
-                </p>
-
-                <h3>{analysisResult.filename}</h3>
-              </div>
-
-              <div className="results-actions">
-                <span
-                  className={`risk-badge ${riskLevel.toLowerCase()}`}
-                >
-                  {riskLevel} risk
-                </span>
-
-                <span className="analysis-time">
-                  Analyzed{" "}
-                  {formatAnalysisTime(
-                    analysisResult.analyzed_at
-                  )}
-                </span>
-
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={downloadAnalysisReport}
-                >
-                  Download report
-                </button>
-
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={startNewAnalysis}
-                >
-                  Analyze another file
-                </button>
-              </div>
-            </div>
-
-            <div className="summary-grid">
-              <article className="summary-card score-card">
-                <span>Risk score</span>
-
-                <strong>
-                  {analysisResult.analysis.risk_score}
-                  <small>/100</small>
-                </strong>
-              </article>
-
-              <article className="summary-card">
-                <span>Risk level</span>
-
-                <strong>
-                  {analysisResult.analysis.risk_level}
-                </strong>
-              </article>
-
-              <article className="summary-card">
-                <span>Total findings</span>
-
-                <strong>
-                  {analysisResult.analysis.total_findings}
-                </strong>
-              </article>
-
-              <article className="summary-card">
-                <span>Records analyzed</span>
-
-                <strong>
-                  {analysisResult.records_analyzed}
-                </strong>
-              </article>
-
-              <article className="summary-card">
-                <span>Input format</span>
-
-                <strong>
-                  {analysisResult.input_format?.toUpperCase() ?? "UNKNOWN"}
-                </strong>
-              </article>
-
-              <article className="summary-card">
-                <span>File size</span>
-
-                <strong>
-                  {formatFileSize(analysisResult.size_bytes)}
-                </strong>
-              </article>
-            </div>
-
-            <div className="panel fingerprint-panel">
-              <div className="fingerprint-heading">
-                <span>SHA-256 fingerprint</span>
-
-                <button
-                  className="fingerprint-copy-button"
-                  type="button"
-                  onClick={copySha256Fingerprint}
-                >
-                  {copyStatus === "copied"
-                    ? "Copied"
-                    : copyStatus === "error"
-                      ? "Copy failed"
-                      : "Copy"}
-                </button>
-              </div>
-
-              <code>{analysisResult.sha256}</code>
-
-              {copyStatus === "error" && (
-                <p className="fingerprint-copy-error" role="status">
-                  Clipboard access is unavailable.
-                </p>
-              )}
-            </div>
-
-            {scoreBreakdown.length > 0 && (
-              <div className="panel score-breakdown-panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="section-label">
-                      Risk calculation
-                    </p>
-
-                    <h3>Why this score?</h3>
-                  </div>
-
-                  <span className="score-total">
-                    {
-                      analysisResult.analysis
-                        .score_before_cap
-                    }{" "}
-                    points detected
-                  </span>
-                </div>
-
-                <div className="score-breakdown-list">
-                  {scoreBreakdown.map((item) => (
-                    <div
-                      className="score-breakdown-row"
-                      key={item.finding_type}
-                    >
-                      <div>
-                        <strong>
-                          {item.finding_type}
-                        </strong>
-
-                        <p>{item.reason}</p>
-                      </div>
-
-                      <span>+{item.points}</span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="score-breakdown-footer">
-                  <div>
-                    <span>Score before cap</span>
-
-                    <strong>
-                      {
-                        analysisResult.analysis
-                          .score_before_cap
-                      }
-                    </strong>
-                  </div>
-
-                  <div>
-                    <span>Final score</span>
-
-                    <strong>
-                      {analysisResult.analysis.risk_score}
-                      <small>
-                        /{
-                          analysisResult.analysis
-                            .score_cap
-                        }
-                      </small>
-                    </strong>
-                  </div>
-                </div>
-
-                {
-                  analysisResult.analysis.score_before_cap >
-                    analysisResult.analysis.score_cap && (
-                    <p className="score-cap-note">
-                      SecureLens limits the final risk
-                      score to{" "}
-                      {analysisResult.analysis.score_cap}.
-                    </p>
-                  )
-                }
-              </div>
-            )}
-
-            {aiSummary && (
-              <div className="panel ai-summary-panel">
-                <div className="panel-heading">
-                  <div>
-                    <p className="section-label">
-                      Analyst summary
-                    </p>
-
-                    <h3>Security overview</h3>
-                  </div>
-
-                  <span className="ai-provider">
-                    {aiSummary.provider === "openai"
-                      ? "AI generated"
-                      : "Local analysis"}
-                  </span>
-                </div>
-
-                <p className="ai-summary-text">
-                  {aiSummary.summary}
-                </p>
-
-                {Array.isArray(aiSummary.priority_actions) &&
-                  aiSummary.priority_actions.length > 0 && (
-                    <div className="priority-actions">
-                      <h4>Priority actions</h4>
-
-                      <ol>
-                        {aiSummary.priority_actions.map(
-                          (action, index) => (
-                            <li key={`${action}-${index}`}>
-                              {action}
-                            </li>
-                          )
-                        )}
-                      </ol>
-                    </div>
-                  )}
-              </div>
-            )}
-            
-            <div className="panel findings-panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="section-label">
-                    Detected activity
-                  </p>
-
-                  <h3>Security findings</h3>
-                </div>
-              </div>
-
-              {analysisResult.analysis.findings.length ===
-              0 ? (
-                <div className="empty-state">
-                  No suspicious indicators were detected.
-                </div>
-              ) : (
-                <div className="findings-list">
-                  {analysisResult.analysis.findings.map(
-                    (finding, index) => (
-                      <article
-                        className="finding-card"
-                        key={`${finding.type}-${index}`}
-                      >
-                        <div className="finding-header">
-                          <div>
-                            <span
-                              className={`severity ${finding.severity.toLowerCase()}`}
-                            >
-                              {finding.severity}
-                            </span>
-
-                            <h4>{finding.type}</h4>
-                          </div>
-
-                          {finding.count !== undefined && (
-                            <span className="finding-count">
-                              {finding.count} detected
-                            </span>
-                          )}
-                        </div>
-
-                        {finding.mitre_attack && (
-                          <div className="finding-row">
-                            <span>MITRE ATT&amp;CK</span>
-
-                            <strong>
-                              {finding.mitre_attack}
-                            </strong>
-                          </div>
-                        )}
-
-                        {Array.isArray(finding.evidence) &&
-                          finding.evidence.length > 0 && (
-                            <div className="evidence">
-                              <span>Evidence</span>
-
-                              <ul className="evidence-list">
-                                {finding.evidence.map((line, evidenceIndex) => (
-                                  <li key={`${finding.type}-evidence-${evidenceIndex}`}>
-                                    <code>{line}</code>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          )}
-
-                        
-                        <div className="recommendation">
-                          <span>Recommended action</span>
-
-                          <p>{finding.recommendation}</p>
-                        </div>
-                      </article>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="panel preview-panel">
-              <div className="panel-heading">
-                <div>
-                  <p className="section-label">
-                    Uploaded content
-                  </p>
-
-                  <h3>Log preview</h3>
-                </div>
-              </div>
-
-              <pre>{analysisResult.preview}</pre>
-            </div>
-          </section>
+        {capped && (
+          <p className="sl-meta">
+            Findings total {total}. Capped at {analysis.score_cap}.
+          </p>
         )}
-      </main>
+
+        {orphaned.length > 0 && (
+          <p className="sl-warning" role="alert">
+            {orphaned.length} score contribution
+            {orphaned.length === 1 ? "" : "s"} couldn't be matched to a
+            finding: {orphaned.map((entry) => entry.finding_type).join(", ")}.
+          </p>
+        )}
+      </section>
+
+      <section className="sl-findings">
+        {items.map((item) => {
+          const isOpen = open === item.id;
+          const shownCount = item.evidence.length;
+
+          return (
+            <article key={item.id} className="sl-finding">
+              <button
+                className="sl-finding-head"
+                onClick={() => setOpen(isOpen ? null : item.id)}
+                aria-expanded={isOpen}
+              >
+                <span
+                  className="sl-pts"
+                  style={{ color: SEVERITY_COLOR[item.severity] }}
+                >
+                  +{item.points}
+                </span>
+                <span className="sl-finding-title">
+                  {item.type}
+                  <span className="sl-sev">{item.severity}</span>
+                </span>
+                <span className="sl-tech">
+                  {item.count !== undefined && <>{item.count}x</>}
+                  {item.mitreAttack && <>&nbsp;{item.mitreAttack}</>}
+                </span>
+              </button>
+
+              {isOpen && (
+                <div className="sl-body">
+                  <p className="sl-reason">{item.reason}</p>
+                  <ul className="sl-evidence">
+                    {item.evidence.map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                  </ul>
+                  {item.count !== undefined && (
+                    <p className="sl-more">
+                      {item.count} match{item.count === 1 ? "" : "es"},{" "}
+                      {shownCount} shown.
+                    </p>
+                  )}
+                  <p className="sl-action">{item.recommendation}</p>
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </section>
+
+      {data.ai_summary && (
+        <section className="sl-summary">
+          <p>{data.ai_summary.summary}</p>
+          <p className="sl-meta">
+            Written by SecureLens from the findings above. Review before acting.
+          </p>
+          {data.ai_summary.priority_actions?.length > 0 && (
+            <div className="sl-priority">
+              <p className="sl-meta">Priority actions</p>
+              <ol>
+                {data.ai_summary.priority_actions.map((action, i) => (
+                  <li key={i}>{action}</li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </section>
+      )}
+
+      <div className="sl-actions">
+        <button className="sl-btn" onClick={downloadReport}>
+          Download report
+        </button>
+        <button className="sl-btn" onClick={onReset}>
+          Analyze another log
+        </button>
+      </div>
     </div>
   );
 }

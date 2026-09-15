@@ -7,7 +7,7 @@ SecureLens is an AI-assisted security log analysis application that turns raw lo
 
 It is a hands-on cybersecurity and software-development portfolio project built with React, FastAPI, Python, Docker, OpenAI, and GitHub Actions.
 
-![SecureLens dashboard](docs/images/securelens-dashboard.png)
+![SecureLens dashboard](docs/images/securelens-dashboard.jpg)
 
 ## What SecureLens Does
 
