@@ -29,19 +29,25 @@ Build and start:
 docker compose up --build -d
 ```
 
-Open:
+The frontend publishes no host port by design - nginx is reachable only
+from inside the `securelens` Docker network (see "Upload Rate Limiting"
+below for why). Reach it one of two ways:
 
-```text
-http://127.0.0.1:8080
-```
-
-Validate the API:
+**Behind Cloudflare Tunnel** (the real deployment path): set
+`CLOUDFLARE_TUNNEL_TOKEN` in `.env` and also start the sidecar:
 
 ```powershell
-curl.exe http://127.0.0.1:8080/api/health
+docker compose --profile cloudflare-tunnel up --build -d
+```
 
-curl.exe -F "file=@examples/sample-security.log" `
-  http://127.0.0.1:8080/api/upload
+**Validating locally without a tunnel**: attach a throwaway container to
+the same network:
+
+```powershell
+docker run --rm --network securelens_securelens curlimages/curl -s http://frontend:80/api/health
+
+docker run --rm --network securelens_securelens -v ${PWD}/examples:/examples:ro curlimages/curl -s `
+  -F "file=@/examples/sample-security.log" http://frontend:80/api/upload
 ```
 
 View services and logs:
@@ -146,6 +152,44 @@ The Compose stack sets `TRUST_PROXY_HEADERS=true` so the backend reads the
 client address from the `X-Real-IP` header that Nginx sets. Enable that flag
 only when the backend is reachable exclusively through a trusted proxy; on a
 directly exposed backend a client could forge the header.
+
+**Behind Cloudflare Tunnel, this needs one more piece.** `cloudflared` makes
+an outbound connection to Cloudflare and proxies requests to Nginx over our
+own Docker network - Nginx never sees a public source address at the TCP
+layer, so `$remote_addr` (and therefore `X-Real-IP`) is always the tunnel
+sidecar's address for every visitor, and the per-IP limiter collapses to one
+global bucket. `frontend/nginx.conf` fixes this with the `real_ip` module:
+it trusts the `CF-Connecting-IP` header (the client IP Cloudflare asserts)
+whenever the connection genuinely originates from the `securelens` Docker
+network (`172.30.0.0/24`, pinned in `compose.yaml`) - and rewrites
+`$remote_addr` to it before the existing `X-Real-IP $remote_addr` line
+runs. The backend is unchanged - it still just trusts whatever Nginx puts
+in `X-Real-IP`.
+
+Trusting the whole `/24`, rather than one pinned sidecar address, is safe
+here specifically because the `frontend` service publishes **no host
+port** (see "Start the Stack" above). With no TCP path into Nginx from
+outside Docker, anything that can present a `CF-Connecting-IP` header to
+it already had to reach it over this network - and the only containers on
+this network are our own (`backend`, `frontend`, `cloudflared`). There is
+also no published port for Docker's loopback NAT to hairpin an outside
+connection through and make it appear to originate from inside this
+range, which is the failure mode a broad subnet trust would otherwise
+risk. **If this compose file is ever adapted to republish a host port**,
+this trust must narrow back to `cloudflared`'s own address (a `/32`), not
+the subnet - otherwise anything that can reach the republished port could
+also, via the same NAT hairpin, appear to be inside the trusted range.
+
+This keeps the same trust boundary the backend already relies on, one hop
+further out: nothing outside this Docker network can reach Nginx at all,
+so nothing outside it can set `CF-Connecting-IP` and be believed - it
+fails safe, not open, by construction rather than by an address check.
+
+This bucketing is verified through the real Nginx + backend containers
+(not just a unit-level test client) in the "Full-stack test" step of
+`.github/workflows/container-build.yml`, alongside a companion step that
+confirms Nginx is actually unreachable from outside Docker in the first
+place.
 
 The limiter keeps counters in process memory, which is sufficient for the
 single-worker container in this stack. Running multiple backend workers or

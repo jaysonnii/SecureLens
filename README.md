@@ -237,7 +237,19 @@ docker compose up -d --build --wait --wait-timeout 90
 docker compose ps
 ```
 
-Open SecureLens at `http://127.0.0.1:8080`.
+The frontend publishes no host port - nginx is reachable only from inside
+the `securelens` Docker network, by design (see "Upload Rate Limiting" in
+DEPLOYMENT.md). To reach the running stack:
+
+- **Behind Cloudflare Tunnel** (the deployed setup): set
+  `CLOUDFLARE_TUNNEL_TOKEN` and start the sidecar too:
+  `docker compose --profile cloudflare-tunnel up -d --build --wait`.
+- **Local poking without a tunnel**: attach a throwaway container to the
+  same network, e.g.
+  `docker run --rm --network securelens_securelens curlimages/curl -s http://frontend:80/api/health`.
+- **Browsing the UI locally**: use the non-Docker dev setup above
+  (`http://127.0.0.1:5173`) instead - the Compose stack is meant to mirror
+  the production topology, not to be browsed directly.
 
 Stop the stack with:
 
