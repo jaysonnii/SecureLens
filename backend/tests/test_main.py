@@ -7,6 +7,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+import app.routers.uploads as uploads_module
 from app.routers.uploads import (
     FILE_READ_CHUNK_SIZE,
     _read_limited_upload,
@@ -105,6 +106,40 @@ def test_valid_log_upload():
     assert data["ai_summary"]["model"] is None
     assert data["ai_summary"]["summary"]
     assert len(data["ai_summary"]["priority_actions"]) <= 3
+
+    assert isinstance(data["analysis_duration_seconds"], (int, float))
+    assert data["analysis_duration_seconds"] >= 0
+
+
+def test_analysis_duration_uses_monotonic_clock_around_analyze_log(
+    monkeypatch,
+):
+    # Fake a clock that jumps backwards between calls (as wall time can,
+    # e.g. an NTP sync) to prove the duration comes from time.monotonic()
+    # and not datetime.now()/time.time(). Two monotonic() calls bracket
+    # analyze_log(): a fixed 2.5s gap between them should end up as the
+    # reported duration regardless of what wall time does around it.
+    monotonic_values = iter([100.0, 102.5])
+
+    monkeypatch.setattr(
+        uploads_module,
+        "monotonic",
+        lambda: next(monotonic_values),
+    )
+
+    response = client.post(
+        "/upload",
+        files={
+            "file": (
+                "security.log",
+                b"Failed login for administrator",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["analysis_duration_seconds"] == 2.5
 
 
 def test_unsupported_file_type():

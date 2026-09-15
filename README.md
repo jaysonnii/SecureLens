@@ -68,6 +68,8 @@ Login sequences are correlated using recognized usernames and source IPv4 addres
 
 SecureLens returns the points added by each finding, the reason for each score contribution, the score before the cap, the final score after the 100-point cap, and a Low, Medium, or High risk level.
 
+The response also reports `analysis_duration_seconds`: wall-clock time spent in the detection engine itself, measured with a monotonic clock so it can't go backwards or be skewed by a system clock change. It covers only `analyze_log()` - not file upload, parsing, or the optional AI summary.
+
 ### Evidence-Focused Findings
 
 Each finding can include its type, severity, detection count, MITRE ATT&CK mapping, up to three evidence entries, and a recommended analyst action. Each evidence entry is `{line_number, text}` - the 1-indexed source line, and the matched text (deduped by content and truncated to 240 characters). When several source lines are identical after normalization, the line number reported is the first occurrence.
