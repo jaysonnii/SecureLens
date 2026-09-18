@@ -309,6 +309,8 @@ GitHub Actions runs backend and frontend checks for pushes and pull requests tar
 
 Avoid uploading credentials, secrets, regulated data, or sensitive production logs to an untrusted deployment.
 
+A full audit of this surface — what's fixed, what's mitigated but still open, and what's accepted as low-severity risk — is in [`SECURITY-REVIEW.md`](SECURITY-REVIEW.md). [`docs/rate-limiter-incident.md`](docs/rate-limiter-incident.md) is a detailed writeup of the review's headline finding: the rate limiter was checked after the upload body had already been read, invisibly to every functional test, until an ASGI-level probe caught it.
+
 ## Current Limitations
 
 - Detection is rule-based rather than a complete parsing engine.
@@ -319,6 +321,8 @@ Avoid uploading credentials, secrets, regulated data, or sensitive production lo
 - There is no authentication or account system.
 - AI summaries require an external OpenAI request when enabled.
 - Results require human review.
+- The detection engine's login-correlation pass is worst-case quadratic; the upload size cap and analysis time budget bound the impact but a dense enough log is rejected rather than analyzed. The algorithmic fix is tracked in [#35](https://github.com/jaysonnii/SecureLens/issues/35). See `SECURITY-REVIEW.md` (M2).
+- The per-IP rate limiter is a fixed window scoped to a single backend process; it allows a brief 2x burst across a window boundary and does not share state across replicas. See `SECURITY-REVIEW.md` (L1, L3).
 
 ## Roadmap
 
