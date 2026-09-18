@@ -77,20 +77,24 @@ Several things SecureLens doesn't do are deliberate, with reasoning worth statin
 
 **Nothing is stored.** No analysis history, no accounts, no authentication. For a public demo this is a security property, not a gap: there is no data at rest to leak and no auth surface to attack. It also means every analysis is ephemeral, which is a real limitation for actual investigation work.
 
-**Uploads default to 5 MB**, configurable 1 to 100. The low default is measured, not arbitrary: the login-correlation pass is worst-case quadratic, and a detection-dense log near 25 MB pinned a worker for about 200 seconds. A 5 MB dense log analyzes in roughly 10. The algorithmic fix is tracked in [#35](https://github.com/jaysonnii/SecureLens/issues/35).
+**Uploads are validated before anything else runs.** Only `.txt`, `.log`, `.csv`, and `.json` are accepted; the file is read in bounded 64 KB chunks and rejected the instant it goes one byte past the configured limit, rather than after buffering the whole thing; content must decode as UTF-8. Uploads default to 5 MB, configurable 1 to 100. The low default is measured, not arbitrary: the login-correlation pass is worst-case quadratic, and a detection-dense log near 25 MB pinned a worker for about 200 seconds. A 5 MB dense log analyzes in roughly 10. Mitigated, not fixed — the algorithmic fix is tracked in [#35](https://github.com/jaysonnii/SecureLens/issues/35); see `SECURITY-REVIEW.md` Part 2, row 6.
 
 **Analysis runs under a wall-clock budget** (`ANALYSIS_TIME_BUDGET_SECONDS`, default 40) so a request cannot outlive the reverse proxy's read timeout and leave a worker burning CPU behind a dropped connection. Over budget returns HTTP 413 rather than a timeout.
 
-**AI is off by default and optional.** Only a restricted representation of deterministic findings reaches the OpenAI Responses API. Raw evidence lines and uploaded content are excluded by an explicit allowlist, not by filtering. Response storage is disabled. A failed or empty AI response falls back to the local summary rather than surfacing an error.
+**AI is off by default and optional.** Only a restricted representation of deterministic findings reaches the OpenAI Responses API. Raw evidence lines and uploaded content are excluded by an explicit allowlist, not by filtering. Response storage is disabled. A failed or empty AI response falls back to the local summary rather than surfacing an error, and failure logs exclude API keys, prompts, raw log content, and exception messages.
 
-**Timestamps are parsed narrowly or not at all.** Two formats are supported: ISO 8601, and the `/Date(milliseconds)/` form some PowerShell JSON exports produce. Bare `HH:MM:SS`, year-less syslog, locale-ambiguous `MM/DD/YYYY`, and bare epoch integers are deliberately unsupported, because each would require guessing. An unparseable value returns `null` rather than a plausible wrong answer. Where UTC was assumed rather than read, the response flags it.
+**Timestamps are parsed narrowly or not at all.** Two formats are supported: ISO 8601, and the `/Date(milliseconds)/` form some PowerShell JSON exports produce. Bare `HH:MM:SS`, year-less syslog, locale-ambiguous `MM/DD/YYYY`, and bare epoch integers are deliberately unsupported, because each would require guessing. An unparseable value returns `null` rather than a plausible wrong answer. Where UTC was assumed rather than read, the response flags it. When at least two of a result's evidence events carry a timestamp, the frontend plots them on a timeline colored by severity, sharing selection state with the score bar and finding list — click a tick or a finding, and the other two follow. It reports how many events it could place ("4 of 7 events placed in time") rather than silently plotting only the parseable subset, and surfaces the same UTC-assumed caveat there. Fewer than two placed events, and the timeline doesn't render at all rather than imply a precision it doesn't have.
+
+**Every accepted upload gets a SHA-256 fingerprint**, calculated from the original bytes and shown in full in the results. Downloaded JSON reports include the fingerprint and export timestamp but exclude the raw log preview.
+
+**The backend runs as a non-root container user**, and local dev's CORS allowlist is limited to the Vite dev-server origins.
 
 ## Known limitations
 
 - Detection is rule-based rather than a general parsing engine, and supported event formats are limited
 - Source-address correlation recognizes IPv4 only
 - Files must decode as UTF-8
-- The per-IP rate limiter is a fixed window in a single process: it admits a brief 2x burst across a window boundary and does not share state across replicas. Accepted as low risk; see SECURITY-REVIEW.md
+- The per-IP rate limiter is a fixed window in a single process: it admits a brief 2x burst across a window boundary and does not share state across replicas. Accepted risk, not a gap — see `SECURITY-REVIEW.md` Part 1, F1-F2, for the reasoning
 - Epoch timestamps in structured JSON/CSV time columns are recognized during parsing but not yet threaded through to evidence ([#38](https://github.com/jaysonnii/SecureLens/issues/38))
 - Results require human review
 
@@ -190,10 +194,10 @@ curl -F "file=@examples/sample-security.log" http://127.0.0.1:8000/upload
 **Tests**
 
 ```bash
-./backend/venv/bin/python -m pytest
-npm --prefix frontend run test
-npm --prefix frontend run lint
-npm --prefix frontend run build
+./backend/venv/bin/python -m pytest                   # Windows: .\backend\venv\Scripts\python.exe -m pytest
+npm --prefix frontend run test                        # Windows: npm.cmd
+npm --prefix frontend run lint                         # Windows: npm.cmd
+npm --prefix frontend run build                        # Windows: npm.cmd
 ```
 
 Pytest, Vitest with React Testing Library, ESLint, and a production build check. GitHub Actions runs all of it on pushes and pull requests to `main`.

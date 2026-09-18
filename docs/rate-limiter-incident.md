@@ -29,7 +29,7 @@ I could have read the FastAPI source to settle it. I decided to measure instead,
 Starlette applications are callables taking `scope`, `receive`, and `send`. The body only arrives when the application awaits `receive()`. So whether the body was read is directly observable: wrap `receive` and record whether it was ever called.
 
 ```python
-async def test_rate_limit_rejects_before_body_is_read():
+async def test_rate_limited_upload_is_rejected_before_the_body_is_read():
     received = False
 
     async def receive():
@@ -52,13 +52,17 @@ Enforcement moved out of the dependency graph and into ASGI middleware, which ru
 ```python
 class RateLimitMiddleware:
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and self._is_limited(scope):
-            await self._reject(send)
-            return          # receive is never awaited
-        await self.app(scope, receive, send)
+        if scope["type"] == "http" and _should_check(scope):
+            request = Request(scope)
+            try:
+                rate_limiter.check(client_key(request))
+            except RateLimitExceeded as error:
+                await _send_429(send, error.retry_after)
+                return          # receive is never awaited
+        await self._app(scope, receive, send)
 ```
 
-It is registered inside the CORS middleware so a 429 still carries CORS headers. The probe stayed as a regression test. It is the only test in the suite asserting something about *when* the limiter runs rather than *what* it returns, and the only one that would catch this regressing.
+It is registered inside the CORS middleware so a 429 still carries CORS headers. The probe stayed as a regression test: `test_rate_limited_upload_is_rejected_before_the_body_is_read` in `backend/tests/test_upload_rate_limit_lifecycle.py`. It is the only test in the suite asserting something about *when* the limiter runs rather than *what* it returns, and the only one that would catch this regressing.
 
 ## What I take from it
 
