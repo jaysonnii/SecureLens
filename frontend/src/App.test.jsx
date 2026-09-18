@@ -173,6 +173,10 @@ describe("joinFindings", () => {
 });
 
 
+function timestamp(utc, { assumed = false, original = utc } = {}) {
+  return { original, utc, timezone_assumed: assumed };
+}
+
 describe("SecureLens App", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
@@ -417,6 +421,225 @@ describe("SecureLens App", () => {
 
     expect(screen.queryByText(/undefined/i)).not.toBeInTheDocument();
     expect(screen.getByText("T1110 - Brute Force")).toBeInTheDocument();
+  });
+
+  it("shows the analysis duration in the file facts row", async () => {
+    fetch
+      .mockResolvedValueOnce(jsonResponse({ status: "healthy" }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          ...analysisResponse,
+          analysis_duration_seconds: 1.234,
+        })
+      );
+
+    render(<App />);
+    await screen.findByText("API Online");
+
+    const input = document.querySelector('input[type="file"]');
+    fireEvent.change(input, {
+      target: { files: [new File(["x"], "security.log", { type: "text/plain" })] },
+    });
+
+    await screen.findByText("security.log");
+
+    expect(screen.getByText("Analysis duration")).toBeInTheDocument();
+    expect(screen.getByText("1.23 s")).toBeInTheDocument();
+  });
+
+  describe("timeline", () => {
+    function withEvidenceTimestamps(pshTimestamp, loginTimestamps) {
+      return {
+        ...analysisResponse,
+        analysis: {
+          ...analysisResponse.analysis,
+          findings: [
+            {
+              ...analysisResponse.analysis.findings[0],
+              evidence: [
+                {
+                  line_number: 12,
+                  text: "Event ID: 4104 PowerShell.exe -EncodedCommand AAAA",
+                  timestamp: pshTimestamp,
+                },
+              ],
+            },
+            {
+              ...analysisResponse.analysis.findings[1],
+              evidence: [
+                {
+                  line_number: 3,
+                  text: "4625  j.reyes  203.0.113.44",
+                  timestamp: loginTimestamps[0],
+                },
+                {
+                  line_number: 7,
+                  text: "4625  j.reyes  203.0.113.44 (retry)",
+                  timestamp: loginTimestamps[1],
+                },
+              ],
+            },
+          ],
+        },
+      };
+    }
+
+    it("does not render when evidence carries no timestamps at all (the un-touched response shape)", async () => {
+      fetch
+        .mockResolvedValueOnce(jsonResponse({ status: "healthy" }))
+        .mockResolvedValueOnce(jsonResponse(analysisResponse));
+
+      render(<App />);
+      await screen.findByText("API Online");
+
+      const input = document.querySelector('input[type="file"]');
+      fireEvent.change(input, {
+        target: { files: [new File(["x"], "security.log", { type: "text/plain" })] },
+      });
+
+      await screen.findByText("security.log");
+
+      expect(screen.queryByText("Timeline")).not.toBeInTheDocument();
+    });
+
+    it("does not render when every evidence timestamp is null", async () => {
+      fetch
+        .mockResolvedValueOnce(jsonResponse({ status: "healthy" }))
+        .mockResolvedValueOnce(
+          jsonResponse(withEvidenceTimestamps(null, [null, null]))
+        );
+
+      render(<App />);
+      await screen.findByText("API Online");
+
+      const input = document.querySelector('input[type="file"]');
+      fireEvent.change(input, {
+        target: { files: [new File(["x"], "security.log", { type: "text/plain" })] },
+      });
+
+      await screen.findByText("security.log");
+
+      expect(screen.queryByText("Timeline")).not.toBeInTheDocument();
+    });
+
+    it(
+      "renders with all timestamps present, reports full placement, and shares selection with the score bar and finding headers",
+      async () => {
+        const user = userEvent.setup();
+
+        fetch
+          .mockResolvedValueOnce(jsonResponse({ status: "healthy" }))
+          .mockResolvedValueOnce(
+            jsonResponse(
+              withEvidenceTimestamps(timestamp("2026-08-01T10:00:00Z"), [
+                timestamp("2026-08-01T09:00:00Z"),
+                timestamp("2026-08-01T09:05:00Z"),
+              ])
+            )
+          );
+
+        render(<App />);
+        await screen.findByText("API Online");
+
+        const input = document.querySelector('input[type="file"]');
+        fireEvent.change(input, {
+          target: { files: [new File(["x"], "security.log", { type: "text/plain" })] },
+        });
+
+        await screen.findByText("security.log");
+
+        expect(screen.getByText("Timeline")).toBeInTheDocument();
+        expect(
+          screen.getByText("3 of 3 events placed in time.", { exact: false })
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByText(/UTC was assumed/)
+        ).not.toBeInTheDocument();
+
+        const track = screen.getByRole("img", { name: "Timeline of 3 events" });
+        const ticks = within(track).getAllByRole("button");
+        expect(ticks).toHaveLength(3);
+
+        const findingsSection = screen
+          .getByText("Suspicious PowerShell Activity")
+          .closest(".sl-findings");
+
+        // Clicking the tick for line 12 (the PowerShell finding's
+        // evidence) opens that finding via the same shared selection
+        // state as the score bar and finding headers.
+        const pshTick = ticks.find((tick) =>
+          tick.title.startsWith("Line 12")
+        );
+        await user.click(pshTick);
+        expect(
+          within(findingsSection).getByText("Review the PowerShell command.")
+        ).toBeInTheDocument();
+      }
+    );
+
+    it("renders with some timestamps null and reports a partial placement", async () => {
+      fetch
+        .mockResolvedValueOnce(jsonResponse({ status: "healthy" }))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            withEvidenceTimestamps(null, [
+              timestamp("2026-08-01T09:00:00Z"),
+              timestamp("2026-08-01T09:05:00Z"),
+            ])
+          )
+        );
+
+      render(<App />);
+      await screen.findByText("API Online");
+
+      const input = document.querySelector('input[type="file"]');
+      fireEvent.change(input, {
+        target: { files: [new File(["x"], "security.log", { type: "text/plain" })] },
+      });
+
+      await screen.findByText("security.log");
+
+      expect(screen.getByText("Timeline")).toBeInTheDocument();
+      expect(
+        screen.getByText("2 of 3 events placed in time.", { exact: false })
+      ).toBeInTheDocument();
+
+      const track = screen.getByRole("img", { name: "Timeline of 2 events" });
+      expect(within(track).getAllByRole("button")).toHaveLength(2);
+    });
+
+    it("surfaces the assumed-timezone caveat when a placed event's offset was assumed rather than read", async () => {
+      fetch
+        .mockResolvedValueOnce(jsonResponse({ status: "healthy" }))
+        .mockResolvedValueOnce(
+          jsonResponse(
+            withEvidenceTimestamps(
+              timestamp("2026-08-01T10:00:00Z"),
+              [
+                timestamp("2026-08-01T09:00:00Z", { assumed: true, original: "2026-08-01T09:00:00" }),
+                null,
+              ]
+            )
+          )
+        );
+
+      render(<App />);
+      await screen.findByText("API Online");
+
+      const input = document.querySelector('input[type="file"]');
+      fireEvent.change(input, {
+        target: { files: [new File(["x"], "security.log", { type: "text/plain" })] },
+      });
+
+      await screen.findByText("security.log");
+
+      expect(
+        screen.getByText("2 of 3 events placed in time.", { exact: false })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/UTC was assumed/)
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows the empty state when nothing matched", async () => {

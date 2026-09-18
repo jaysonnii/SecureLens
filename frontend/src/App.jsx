@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import { joinFindings } from "./joinFindings";
+import { buildTimeline } from "./timeline";
 
 const API_URL =
   import.meta.env.VITE_API_URL ??
@@ -44,6 +45,14 @@ function formatFileSize(bytes) {
   }
 
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function formatDuration(seconds) {
+  if (seconds < 1) {
+    return `${Math.round(seconds * 1000)} ms`;
+  }
+
+  return `${seconds.toFixed(2)} s`;
 }
 
 const ERRORS = {
@@ -410,6 +419,12 @@ function Results({ data, onReset }) {
         <dl className="sl-facts">
           <div><dt>Records analyzed</dt><dd>{data.records_analyzed.toLocaleString()}</dd></div>
           <div><dt>Size</dt><dd>{formatFileSize(data.size_bytes)}</dd></div>
+          {typeof data.analysis_duration_seconds === "number" && (
+            <div>
+              <dt>Analysis duration</dt>
+              <dd>{formatDuration(data.analysis_duration_seconds)}</dd>
+            </div>
+          )}
           <div className="sl-fact-wide">
             <dt>SHA-256</dt>
             <dd title={data.sha256}>
@@ -486,6 +501,8 @@ function Results({ data, onReset }) {
           </p>
         )}
       </section>
+
+      <Timeline items={items} open={open} setOpen={setOpen} />
 
       <section className="sl-findings">
         {items.map((item) => {
@@ -568,6 +585,60 @@ function Results({ data, onReset }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function Timeline({ items, open, setOpen }) {
+  const timeline = buildTimeline(items);
+
+  // Fewer than two placed points can't show a window - rendering one
+  // tick (or none) would either be meaningless or misleading, so the
+  // timeline doesn't render at all rather than imply a scale it doesn't
+  // have.
+  if (timeline.placedCount < 2) {
+    return null;
+  }
+
+  return (
+    <section className="sl-timeline">
+      <h2 className="sl-timeline-title">Timeline</h2>
+      <p className="sl-meta">
+        {timeline.placedCount} of {timeline.totalCount} events placed in
+        time.
+        {timeline.hasAssumedTimezone && (
+          <>
+            {" "}
+            Some timestamps didn&apos;t specify a timezone; UTC was assumed
+            for those.
+          </>
+        )}
+      </p>
+
+      <div
+        className="sl-timeline-track"
+        role="img"
+        aria-label={`Timeline of ${timeline.placedCount} events`}
+      >
+        {timeline.events.map((event, i) => (
+          <button
+            key={`${event.findingId}-${i}`}
+            className={
+              "sl-tick" + (open === event.findingId ? " is-open" : "")
+            }
+            style={{
+              left: `${event.percent}%`,
+              background: SEVERITY_COLOR[event.severity],
+            }}
+            onClick={() =>
+              setOpen(open === event.findingId ? null : event.findingId)
+            }
+            title={`Line ${event.lineNumber} — ${event.timestamp.utc}${
+              event.timestamp.timezone_assumed ? " (UTC assumed)" : ""
+            }`}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
