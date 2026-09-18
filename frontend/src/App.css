@@ -201,6 +201,37 @@
   color: var(--dim);
 }
 
+.sl-timeline { margin-bottom: 3rem; }
+.sl-timeline-title {
+  font-size: .8125rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--dim);
+  margin: 0 0 .5rem;
+}
+.sl-timeline-track {
+  position: relative;
+  height: 2.5rem;
+  background: var(--surface);
+  margin-top: .75rem;
+}
+.sl-tick {
+  position: absolute;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border: 0;
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+  opacity: .85;
+  transform: translate(-50%, -50%);
+  transition: opacity .12s, transform .12s;
+}
+.sl-tick:hover, .sl-tick.is-open { opacity: 1; transform: translate(-50%, -50%) scale(1.5); }
+.sl-tick:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
 .sl-finding { border-top: 1px solid var(--rule); }
 .sl-finding:last-child { border-bottom: 1px solid var(--rule); }
 .sl-finding-head {
@@ -304,5 +335,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .sl-seg { transition: none; }
+  .sl-tick { transition: none; }
   .sl-pulse::after { animation: none; width: 100%; opacity: .4; }
 }
