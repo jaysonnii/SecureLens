@@ -321,8 +321,8 @@ A full audit of this surface — what's fixed, what's mitigated but still open, 
 - There is no authentication or account system.
 - AI summaries require an external OpenAI request when enabled.
 - Results require human review.
-- The detection engine's login-correlation pass is worst-case quadratic; the upload size cap and analysis time budget bound the impact but a dense enough log is rejected rather than analyzed. The algorithmic fix is tracked in [#35](https://github.com/jaysonnii/SecureLens/issues/35). See `SECURITY-REVIEW.md` (M2).
-- The per-IP rate limiter is a fixed window scoped to a single backend process; it allows a brief 2x burst across a window boundary and does not share state across replicas. See `SECURITY-REVIEW.md` (L1, L3).
+- The detection engine's login-correlation pass is worst-case quadratic; the upload size cap and analysis time budget bound the impact but a dense enough log is rejected rather than analyzed. The algorithmic fix is tracked in [#35](https://github.com/jaysonnii/SecureLens/issues/35). See `SECURITY-REVIEW.md` Part 2, row 6.
+- The per-IP rate limiter is a fixed window scoped to a single backend process; it allows a brief 2x burst across a window boundary and does not share state across replicas. See `SECURITY-REVIEW.md` Part 1, F1-F2.
 
 ## Roadmap
 
