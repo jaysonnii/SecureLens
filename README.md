@@ -3,88 +3,31 @@
 [![Backend Tests](https://github.com/jaysonnii/SecureLens/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/jaysonnii/SecureLens/actions/workflows/backend-tests.yml)
 [![Frontend Checks](https://github.com/jaysonnii/SecureLens/actions/workflows/frontend-checks.yml/badge.svg)](https://github.com/jaysonnii/SecureLens/actions/workflows/frontend-checks.yml)
 
-SecureLens is an AI-assisted security log analysis application that turns raw log files into readable findings, evidence, risk scores, MITRE ATT&CK mappings, and recommended investigation steps.
+Upload a security log. Get back findings, the evidence behind each one, a risk score that shows its arithmetic, and MITRE ATT&CK mappings.
 
-It is a hands-on cybersecurity and software-development portfolio project built with React, FastAPI, Python, Docker, OpenAI, and GitHub Actions.
+<!-- TODO: live demo link goes here, above the screenshot -->
 
 ![SecureLens dashboard](docs/images/securelens-dashboard.jpg)
 
-## What SecureLens Does
+A cybersecurity and software-engineering portfolio project. React, FastAPI, Python, Docker, GitHub Actions, with an optional OpenAI summary layer that is off by default.
 
-Users can upload a supported security log and receive:
+---
 
-- Detected security findings
-- Severity and supporting evidence
-- A transparent risk score from 0 to 100
-- MITRE ATT&CK mappings
-- Recommended investigation steps
-- A local analyst-style summary
-- An optional OpenAI-generated summary
-- A SHA-256 fingerprint calculated from the original uploaded bytes
-- A downloadable JSON analysis report
+## The part worth looking at
 
-SecureLens is an educational analysis tool. It is not a replacement for a SIEM, EDR platform, incident-response process, or trained security analyst.
+Most tools hand you a risk score and expect you to trust it. SecureLens shows how the number was built.
 
-## Current Detection Rules
+Every analysis returns the points each finding contributed, the reason for that contribution, the total before the 100-point cap, and the total after. Each finding carries the source lines it fired on, with line numbers, so a conclusion can be traced back to the log. If findings total more than 100, the response says so rather than quietly clamping.
 
-The deterministic analyzer currently detects:
+That chain — score, contributions, evidence, ATT&CK technique — is the product.
 
-- Failed login attempts
-- Successful login after multiple failures
-- PowerShell execution
-- Suspicious or encoded PowerShell activity
-- Administrator or privileged account activity
-- Windows security log clearing
-- Account lockouts
-- User account creation
-- Privileged group membership changes
-- Special privileges assigned to non-system logons
-- Suspicious `mshta`, `certutil`, and `wmic` process execution
+## Two documents
 
-Recognized Windows Event IDs include `4625`, `4624`, `4104`, `1102`, `4740`, `4720`, `4728`, `4732`, `4672`, and `4688`.
+These are the most useful things in the repo if you want to know how it was built rather than what it does.
 
-Login sequences are correlated using recognized usernames and source IPv4 addresses when available. Process-creation rules inspect command-line content to distinguish suspicious activity from benign Event ID `4688` records.
+**[SECURITY-REVIEW.md](SECURITY-REVIEW.md)** — an audit of this codebase: what was found, what was fixed, what is mitigated but still open, and what is accepted as low-severity risk with the reasoning. AI-assisted, findings verified empirically.
 
-## Key Features
-
-### Secure Upload Validation
-
-- Accepts `.txt`, `.log`, `.csv`, and `.json`
-- Parses JSON arrays, JSON objects, JSON Lines, and header-based CSV records
-- Requires UTF-8 text and supports UTF-8 BOM files
-- Defaults to a configurable 5 MB limit with a supported range of 1 to 100 MB
-- Reads uploads in bounded 64 KB chunks
-- Rejects oversized files after the first byte beyond the limit
-
-### File Integrity and Report Export
-
-- Calculates a SHA-256 fingerprint from the original uploaded file bytes
-- Displays the full fingerprint in the analysis results
-- Includes the fingerprint in downloaded JSON reports
-- Exports the completed analysis with an export timestamp
-- Excludes the raw log preview from downloaded reports
-
-### Explainable Risk Scoring
-
-SecureLens returns the points added by each finding, the reason for each score contribution, the score before the cap, the final score after the 100-point cap, and a Low, Medium, or High risk level.
-
-The response also reports `analysis_duration_seconds`: wall-clock time spent in the detection engine itself, measured with a monotonic clock so it can't go backwards or be skewed by a system clock change. It covers only `analyze_log()` - not file upload, parsing, or the optional AI summary.
-
-### Evidence-Focused Findings
-
-Each finding can include its type, severity, detection count, MITRE ATT&CK mapping, up to three evidence entries, and a recommended analyst action. Each evidence entry is `{line_number, text, timestamp}` - the 1-indexed source line, the matched text (deduped by content and truncated to 240 characters), and a parsed timestamp where one could be read without guessing. When several source lines are identical after normalization, the line number reported is the first occurrence.
-
-`timestamp` is `null` when nothing at the start of the line could be confidently parsed, or `{original, utc, timezone_assumed}` when it could. Supported today: ISO 8601 (with or without a `Z`/offset) and the `/Date(milliseconds)/` format some PowerShell JSON exports use for `DateTime` fields. `timezone_assumed` is `true` only when an ISO timestamp had no explicit offset (UTC is assumed, not read) - never for `/Date()/`, which is always an absolute instant. Deliberately not supported, because each would require guessing rather than reading: bare `HH:MM:SS` with no date, syslog's year-less `MMM DD HH:MM:SS`, locale-ambiguous `MM/DD/YYYY`, and Unix epoch numbers appearing as plain text (epoch values in a structured JSON/CSV time column are recognized during parsing, just not yet threaded through to evidence).
-
-### Optional AI Summary
-
-AI summaries are disabled by default. When enabled, SecureLens sends only a restricted representation of deterministic findings to the OpenAI Responses API. Raw evidence lines and uploaded log content are excluded from the AI input.
-
-When the AI request fails or returns an empty result, SecureLens safely falls back to a local summary.
-
-### Automated Testing
-
-The project includes backend tests with Pytest, frontend workflow tests with Vitest and React Testing Library, ESLint, production-build checks, and GitHub Actions.
+**[docs/rate-limiter-incident.md](docs/rate-limiter-incident.md)** — the review's headline finding, written up. The rate limiter was documented as rejecting requests before reading the upload body. It wasn't. Every functional test passed the whole time. An ASGI-level probe caught it.
 
 ## Architecture
 
@@ -108,236 +51,177 @@ flowchart LR
     Frontend --> Report[Downloadable JSON Report]
 ```
 
-## Technology Stack
+The detection engine finds the evidence. The optional AI layer only explains evidence the deterministic analyzer already found; it never invents findings, and raw log content never reaches the prompt.
 
-**Frontend:** React, Vite, JavaScript, CSS, Vitest, React Testing Library, ESLint
+## What it detects
 
-**Backend:** Python, FastAPI, Uvicorn, OpenAI Python SDK, Pytest, python-multipart, python-dotenv
+- Failed login attempts
+- Successful login after multiple failures
+- PowerShell execution
+- Suspicious or encoded PowerShell activity
+- Administrator or privileged account activity
+- Windows security log clearing
+- Account lockouts
+- User account creation
+- Privileged group membership changes
+- Special privileges assigned to non-system logons
+- Suspicious `mshta`, `certutil`, and `wmic` process execution
 
-**DevOps:** Docker and GitHub Actions
+Recognized Windows Event IDs: `4625`, `4624`, `4104`, `1102`, `4740`, `4720`, `4728`, `4732`, `4672`, `4688`.
 
-## Project Structure
+Login sequences are correlated by recognized username and source IPv4 address where available. Process-creation rules inspect command-line content to separate suspicious activity from benign Event ID `4688` records.
 
-```text
-SecureLens/
-|-- .github/workflows/
-|-- backend/
-|   |-- app/
-|   |   |-- routers/
-|   |   `-- services/
-|   |-- tests/
-|   |-- .env.example
-|   `-- Dockerfile
-|-- docs/images/
-|-- examples/sample-security.log
-|-- frontend/
-|   |-- src/
-|   |-- .env.example
-|   |-- Dockerfile
-|   |-- nginx.conf
-|   `-- vitest.config.js
-|-- compose.yaml
-|-- DEPLOYMENT.md
-|-- pytest.ini
-`-- README.md
-```
+## Design decisions
 
-## Requirements
+Several things SecureLens doesn't do are deliberate, with reasoning worth stating.
 
-- Python 3.14
-- Node.js 24
-- npm
-- Git
-- Docker, optional
+**Nothing is stored.** No analysis history, no accounts, no authentication. For a public demo this is a security property, not a gap: there is no data at rest to leak and no auth surface to attack. It also means every analysis is ephemeral, which is a real limitation for actual investigation work.
 
-## Local Setup
+**Uploads are validated before anything else runs.** Only `.txt`, `.log`, `.csv`, and `.json` are accepted; the file is read in bounded 64 KB chunks and rejected the instant it goes one byte past the configured limit, rather than after buffering the whole thing; content must decode as UTF-8. Uploads default to 5 MB, configurable 1 to 100. The low default is measured, not arbitrary: the login-correlation pass is worst-case quadratic, and a detection-dense log near 25 MB pinned a worker for about 200 seconds. A 5 MB dense log analyzes in roughly 10. Mitigated, not fixed — the algorithmic fix is tracked in [#35](https://github.com/jaysonnii/SecureLens/issues/35); see `SECURITY-REVIEW.md` Part 2, row 6.
 
-### Backend on Windows
+**Analysis runs under a wall-clock budget** (`ANALYSIS_TIME_BUDGET_SECONDS`, default 40) so a request cannot outlive the reverse proxy's read timeout and leave a worker burning CPU behind a dropped connection. Over budget returns HTTP 413 rather than a timeout.
 
-```powershell
+**AI is off by default and optional.** Only a restricted representation of deterministic findings reaches the OpenAI Responses API. Raw evidence lines and uploaded content are excluded by an explicit allowlist, not by filtering. Response storage is disabled. A failed or empty AI response falls back to the local summary rather than surfacing an error, and failure logs exclude API keys, prompts, raw log content, and exception messages.
+
+**Timestamps are parsed narrowly or not at all.** Two formats are supported: ISO 8601, and the `/Date(milliseconds)/` form some PowerShell JSON exports produce. Bare `HH:MM:SS`, year-less syslog, locale-ambiguous `MM/DD/YYYY`, and bare epoch integers are deliberately unsupported, because each would require guessing. An unparseable value returns `null` rather than a plausible wrong answer. Where UTC was assumed rather than read, the response flags it. When at least two of a result's evidence events carry a timestamp, the frontend plots them on a timeline colored by severity, sharing selection state with the score bar and finding list — click a tick or a finding, and the other two follow. It reports how many events it could place ("4 of 7 events placed in time") rather than silently plotting only the parseable subset, and surfaces the same UTC-assumed caveat there. Fewer than two placed events, and the timeline doesn't render at all rather than imply a precision it doesn't have.
+
+**Every accepted upload gets a SHA-256 fingerprint**, calculated from the original bytes and shown in full in the results. Downloaded JSON reports include the fingerprint and export timestamp but exclude the raw log preview.
+
+**The backend runs as a non-root container user**, and local dev's CORS allowlist is limited to the Vite dev-server origins.
+
+## Known limitations
+
+- Detection is rule-based rather than a general parsing engine, and supported event formats are limited
+- Source-address correlation recognizes IPv4 only
+- Files must decode as UTF-8
+- The per-IP rate limiter is a fixed window in a single process: it admits a brief 2x burst across a window boundary and does not share state across replicas. Accepted risk, not a gap — see `SECURITY-REVIEW.md` Part 1, F1-F2, for the reasoning
+- Epoch timestamps in structured JSON/CSV time columns are recognized during parsing but not yet threaded through to evidence ([#38](https://github.com/jaysonnii/SecureLens/issues/38))
+- Results require human review
+
+Rules this limited will produce false positives and miss malicious activity.
+
+## Try it
+
+<details>
+<summary><strong>Local setup</strong></summary>
+
+Requires Python 3.14, Node.js 24, npm, Git. Docker optional.
+
+**Backend**
+
+```bash
 cd backend
 python -m venv venv
-.\venv\Scripts\python.exe -m pip install --upgrade pip
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
-.\venv\Scripts\python.exe -m uvicorn main:app --reload
+./venv/bin/python -m pip install --upgrade pip      # Windows: .\venv\Scripts\python.exe
+./venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env                                 # Windows: Copy-Item .env.example .env
+./venv/bin/python -m uvicorn main:app --reload
 ```
 
-Backend: `http://127.0.0.1:8000`
+Backend on `http://127.0.0.1:8000`, API docs at `/docs`.
 
-API documentation: `http://127.0.0.1:8000/docs`
+**Frontend** (second terminal, from the repo root)
 
-### Frontend on Windows
-
-Open another terminal from the repository root:
-
-```powershell
-npm.cmd --prefix frontend install
-Copy-Item frontend\.env.example frontend\.env
-npm.cmd --prefix frontend run dev -- --port 5173
+```bash
+npm --prefix frontend install                        # Windows: npm.cmd
+cp frontend/.env.example frontend/.env
+npm --prefix frontend run dev -- --port 5173
 ```
 
-Frontend: `http://127.0.0.1:5173`
+Frontend on `http://127.0.0.1:5173`.
 
-## Environment Variables
+**Then**
 
-### Backend
+Upload `examples/sample-security.log` and click **Analyze log**. All data in the sample is fictional.
+
+</details>
+
+<details>
+<summary><strong>Environment variables</strong></summary>
 
 Create `backend/.env` from `backend/.env.example`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MAX_FILE_SIZE_MB` | `5` | Upload limit from 1 to 100 MB |
-| `ANALYSIS_TIME_BUDGET_SECONDS` | `40` | Wall-clock ceiling for a single analysis; over budget returns HTTP 413 |
+| `MAX_FILE_SIZE_MB` | `5` | Upload limit, 1 to 100 MB |
+| `ANALYSIS_TIME_BUDGET_SECONDS` | `40` | Wall-clock ceiling for one analysis; over budget returns HTTP 413 |
 | `RATE_LIMIT_ENABLED` | `true` | Per-IP rate limiting on `POST /upload` |
 | `RATE_LIMIT_MAX_REQUESTS` | `10` | Allowed uploads per IP per window |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Length of the rate-limit window |
-| `TRUST_PROXY_HEADERS` | `false` | Read the client IP from `X-Real-IP`; enable only behind the bundled nginx |
-| `AI_SUMMARY_ENABLED` | `false` | Enables or disables OpenAI summaries |
-| `OPENAI_API_KEY` | Empty | API key used only when summaries are enabled |
-| `OPENAI_MODEL` | `gpt-5-mini` | Model used for the optional summary |
-| `OPENAI_TIMEOUT_SECONDS` | `12` | Per-call ceiling on the OpenAI request; on timeout the local summary is used |
+| `TRUST_PROXY_HEADERS` | `false` | Read the client IP from the proxy header; enable only behind the bundled nginx |
+| `AI_SUMMARY_ENABLED` | `false` | Enables OpenAI summaries |
+| `OPENAI_API_KEY` | empty | Used only when summaries are enabled |
+| `OPENAI_MODEL` | `gpt-5-mini` | Model for the optional summary |
+| `OPENAI_TIMEOUT_SECONDS` | `12` | Per-call ceiling; on timeout the local summary is used |
+
+Frontend: `frontend/.env` from the example, with `VITE_API_URL=http://127.0.0.1:8000`.
 
 Never commit a real API key.
 
-### Frontend
+</details>
 
-Create `frontend/.env` from `frontend/.env.example`.
+<details>
+<summary><strong>Docker</strong></summary>
 
-```env
-VITE_API_URL=http://127.0.0.1:8000
-```
-
-## Try the Included Sample
-
-1. Start the backend and frontend.
-2. Open `http://127.0.0.1:5173`.
-3. Upload `examples/sample-security.log`.
-4. Click **Analyze log**.
-5. Review the score breakdown, evidence, MITRE mappings, summary, SHA-256 fingerprint, and recommended actions.
-6. Click **Download report** to export the completed analysis as JSON.
-
-All data in the sample is fictional.
-
-## API Endpoints
-
-- `GET /health`
-- `POST /upload`
-
-The upload request must use `multipart/form-data` with a field named `file`.
-
-PowerShell example:
-
-```powershell
-curl.exe -F "file=@examples/sample-security.log" http://127.0.0.1:8000/upload
-```
-
-## Docker
-
-Build and run the full application with Docker Compose:
-
-```powershell
+```bash
 docker compose up -d --build --wait --wait-timeout 90
 docker compose ps
 ```
 
-The frontend publishes no host port - nginx is reachable only from inside
-the `securelens` Docker network, by design (see "Upload Rate Limiting" in
-DEPLOYMENT.md). To reach the running stack:
+The frontend publishes no host port. nginx is reachable only from inside the `securelens` Docker network, by design. To reach a running stack:
 
-- **Behind Cloudflare Tunnel** (the deployed setup): set
-  `CLOUDFLARE_TUNNEL_TOKEN` and start the sidecar too:
-  `docker compose --profile cloudflare-tunnel up -d --build --wait`.
-- **Local poking without a tunnel**: attach a throwaway container to the
-  same network, e.g.
-  `docker run --rm --network securelens_securelens curlimages/curl -s http://frontend:80/api/health`.
-- **Browsing the UI locally**: use the non-Docker dev setup above
-  (`http://127.0.0.1:5173`) instead - the Compose stack is meant to mirror
-  the production topology, not to be browsed directly.
+- **Behind Cloudflare Tunnel** (the deployed setup): set `CLOUDFLARE_TUNNEL_TOKEN` and start the sidecar with `docker compose --profile cloudflare-tunnel up -d --build --wait`
+- **Local checks without a tunnel**: attach a throwaway container to the same network, e.g. `docker run --rm --network securelens_securelens curlimages/curl -s http://frontend:80/api/health`
+- **Browsing the UI locally**: use the dev setup above. The Compose stack mirrors production topology rather than being meant for direct browsing.
 
-Stop the stack with:
+`docker compose down` to stop. See [DEPLOYMENT.md](DEPLOYMENT.md) for production configuration.
 
-```powershell
-docker compose down
+</details>
+
+<details>
+<summary><strong>API and testing</strong></summary>
+
+**Endpoints:** `GET /health`, `POST /upload`
+
+Upload takes `multipart/form-data` with a field named `file`.
+
+```bash
+curl -F "file=@examples/sample-security.log" http://127.0.0.1:8000/upload
 ```
 
-To build and run only the backend:
+**Response shape.** Each finding carries type, severity, detection count, ATT&CK mapping, up to three evidence entries, and a recommended action. Each evidence entry is `{line_number, text, timestamp}`: the 1-indexed source line, the matched text (deduped by normalized content, truncated to 240 characters), and either `null` or `{original, utc, timezone_assumed}`. Where identical lines were deduped, the line number is the first occurrence. The response also includes `analysis_duration_seconds`, measured with a monotonic clock around the detection engine only.
 
-```powershell
-docker build -t securelens-backend ./backend
-docker run --rm -p 8000:8000 securelens-backend
+**Tests**
+
+```bash
+./backend/venv/bin/python -m pytest                   # Windows: .\backend\venv\Scripts\python.exe -m pytest
+npm --prefix frontend run test                        # Windows: npm.cmd
+npm --prefix frontend run lint                         # Windows: npm.cmd
+npm --prefix frontend run build                        # Windows: npm.cmd
 ```
 
-To pass backend environment variables:
+Pytest, Vitest with React Testing Library, ESLint, and a production build check. GitHub Actions runs all of it on pushes and pull requests to `main`.
 
-```powershell
-docker run --rm -p 8000:8000 --env-file backend/.env securelens-backend
-```
+</details>
 
-## Deployment
+## Stack
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the full-stack Docker Compose deployment and production configuration.
+**Frontend** React, Vite, JavaScript, CSS, Vitest, React Testing Library, ESLint
 
-## Testing
+**Backend** Python, FastAPI, Uvicorn, OpenAI Python SDK, Pytest, python-multipart, python-dotenv
 
-```powershell
-.\backend\venv\Scripts\python.exe -m pytest
-npm.cmd --prefix frontend run test
-npm.cmd --prefix frontend run lint
-npm.cmd --prefix frontend run build
-```
-
-GitHub Actions runs backend and frontend checks for pushes and pull requests targeting `main`.
-
-## Security and Privacy Design
-
-- Uploads default to 5 MB and can be configured from 1 to 100 MB.
-- Oversized uploads are read only to the limit plus one byte.
-- Analysis runs under a wall-clock budget (`ANALYSIS_TIME_BUDGET_SECONDS`, default 40); a log that exceeds it is rejected instead of tying up a worker.
-- The optional OpenAI call is bounded by `OPENAI_TIMEOUT_SECONDS` (default 12, no retries) so parsing + analysis + summary cannot outlast the reverse proxy's read timeout.
-- `POST /upload` is rate limited per client IP with a fixed-window counter.
-- Only supported text extensions are accepted.
-- Files must decode as UTF-8.
-- Each accepted upload receives a SHA-256 fingerprint calculated from its original bytes.
-- Downloaded reports exclude the raw log preview.
-- Raw evidence and uploaded log content are excluded from AI prompts.
-- OpenAI response storage is disabled.
-- AI failures fall back to local summaries.
-- AI failure logs exclude API keys, prompts, raw logs, and exception messages.
-- The backend Docker container runs as a non-root user.
-- Local CORS access is limited to the Vite development origins.
-
-Avoid uploading credentials, secrets, regulated data, or sensitive production logs to an untrusted deployment.
-
-A full audit of this surface — what's fixed, what's mitigated but still open, and what's accepted as low-severity risk — is in [`SECURITY-REVIEW.md`](SECURITY-REVIEW.md). [`docs/rate-limiter-incident.md`](docs/rate-limiter-incident.md) is a detailed writeup of the review's headline finding: the rate limiter was checked after the upload body had already been read, invisibly to every functional test, until an ASGI-level probe caught it.
-
-## Current Limitations
-
-- Detection is rule-based rather than a complete parsing engine.
-- Supported event formats are limited.
-- Source-address correlation currently recognizes IPv4 only.
-- Files must contain UTF-8 text.
-- Analysis history is not stored.
-- There is no authentication or account system.
-- AI summaries require an external OpenAI request when enabled.
-- Results require human review.
-- The detection engine's login-correlation pass is worst-case quadratic; the upload size cap and analysis time budget bound the impact but a dense enough log is rejected rather than analyzed. The algorithmic fix is tracked in [#35](https://github.com/jaysonnii/SecureLens/issues/35). See `SECURITY-REVIEW.md` Part 2, row 6.
-- The per-IP rate limiter is a fixed window scoped to a single backend process; it allows a brief 2x burst across a window boundary and does not share state across replicas. See `SECURITY-REVIEW.md` Part 1, F1-F2.
+**Infrastructure** Docker, nginx, Cloudflare Tunnel, GitHub Actions
 
 ## Roadmap
 
-- Additional Windows and Linux detections
-- IPv6 identity correlation
-- Authentication and role-based access
-- Saved analysis history
-- SIEM and ticketing integrations
-- Configurable detection rules
-- Expanded browser and accessibility testing
+The next real milestone is multi-file correlation: several scattered logs becoming one chronological, evidence-backed incident story. That depends on normalizing events before detection runs, which is also what [#35](https://github.com/jaysonnii/SecureLens/issues/35) and [#38](https://github.com/jaysonnii/SecureLens/issues/38) are waiting on.
+
+Beyond that: additional Windows and Linux detections, IPv6 correlation, saved investigations with analyst notes, PDF case reports, configurable detection rules.
 
 ## Disclaimer
 
-SecureLens is an educational cybersecurity project. Its limited rules may produce false positives or miss malicious activity. Do not use it as the sole basis for incident-response, legal, compliance, or production-security decisions.
+SecureLens is an educational project. It is not a replacement for a SIEM, an EDR platform, an incident-response process, or a trained analyst. Do not use it as the sole basis for incident-response, legal, compliance, or production-security decisions. Avoid uploading credentials, secrets, regulated data, or sensitive production logs to an untrusted deployment.
 
 ## Author
 
-Built by [Jay Soni](https://github.com/jaysonnii) as a hands-on cybersecurity and software-development portfolio project.
+Built by [Jay Soni](https://github.com/jaysonnii).
