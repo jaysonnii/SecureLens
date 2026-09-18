@@ -242,6 +242,12 @@
   overflow-x: auto;
   white-space: pre;
 }
+.sl-ln {
+  display: inline-block;
+  width: 3.5rem;
+  color: var(--dim);
+  user-select: none;
+}
 .sl-action { margin: 0; font-size: .875rem; color: var(--dim); }
 
 .sl-facts {
@@ -292,6 +298,7 @@
   .sl-finding-head { grid-template-columns: 3rem 1fr; }
   .sl-tech { display: none; }
   .sl-body { padding-left: 0; }
+  .sl-ln { width: 2.5rem; }
   .sl-facts { gap: .25rem 1.25rem; }
   .sl-actions { flex-direction: column; }
 }

@@ -60,7 +60,12 @@ const analysisResponse = {
         severity: "High",
         count: 1,
         mitre_attack: "T1059.001 - PowerShell",
-        evidence: ["Event ID: 4104 PowerShell.exe -EncodedCommand AAAA"],
+        evidence: [
+          {
+            line_number: 12,
+            text: "Event ID: 4104 PowerShell.exe -EncodedCommand AAAA",
+          },
+        ],
         recommendation: "Review the PowerShell command.",
       },
       {
@@ -68,8 +73,8 @@ const analysisResponse = {
         severity: "Medium",
         count: 4,
         evidence: [
-          "4625  j.reyes  203.0.113.44",
-          "4625  j.reyes  203.0.113.44",
+          { line_number: 3, text: "4625  j.reyes  203.0.113.44" },
+          { line_number: 7, text: "4625  j.reyes  203.0.113.44 (retry)" },
         ],
         recommendation: "Review the source IP and account.",
       },
@@ -289,6 +294,7 @@ describe("SecureLens App", () => {
         within(findingsSection).getByText("Review the PowerShell command.")
       ).toBeInTheDocument();
       expect(screen.getByText("1 match, 1 shown.")).toBeInTheDocument();
+      expect(within(findingsSection).getByText("12")).toBeInTheDocument();
 
       // Clicking the same finding's score-bar segment closes it -
       // bar segments and finding headers drive the same selection state.
@@ -391,7 +397,7 @@ describe("SecureLens App", () => {
                 type: "Login After Multiple Failures",
                 severity: "High",
                 mitre_attack: "T1110 - Brute Force",
-                evidence: ["login evidence line"],
+                evidence: [{ line_number: 5, text: "login evidence line" }],
                 recommendation: "Review account activity.",
               },
             ],

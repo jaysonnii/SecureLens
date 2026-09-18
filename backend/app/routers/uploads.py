@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from hashlib import sha256
+from time import monotonic
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
@@ -97,6 +98,11 @@ async def upload_file(file: UploadFile = File(...)):
             detail=str(error),
         ) from error
 
+    # Monotonic, not wall time: wall time can jump backwards (NTP sync,
+    # DST, manual clock changes) and would make a duration meaningless
+    # or even negative.
+    analysis_started_at = monotonic()
+
     try:
         analysis = analyze_log(
             parsed_log.analysis_text,
@@ -111,6 +117,11 @@ async def upload_file(file: UploadFile = File(...)):
                 "or less repetitive log."
             ),
         ) from error
+
+    analysis_duration_seconds = round(
+        monotonic() - analysis_started_at,
+        3,
+    )
 
     ai_summary = await generate_ai_summary(analysis)
     return {
@@ -127,5 +138,6 @@ async def upload_file(file: UploadFile = File(...)):
         "records_analyzed": parsed_log.record_count,
         "preview": decoded_text[:500],
         "analysis": analysis,
+        "analysis_duration_seconds": analysis_duration_seconds,
         "ai_summary": ai_summary,
     }

@@ -1,9 +1,116 @@
 import re
 import time
+from dataclasses import dataclass
+from datetime import datetime, timezone
 
 
 MAX_EVIDENCE_LINES = 3
 MAX_EVIDENCE_LENGTH = 240
+
+# Timestamp extraction for evidence lines - deliberately narrow. See
+# _parse_leading_timestamp() for what is and is not supported and why.
+_WINDOWS_DATE_PATTERN = re.compile(
+    r"^/Date\((?P<milliseconds>-?\d+)(?:[+-]\d{4})?\)/"
+)
+_ISO_TIMESTAMP_PATTERN = re.compile(
+    r"^(?P<datetime>\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?)"
+    r"(?P<offset>Z|[+-]\d{2}:?\d{2})?"
+)
+
+
+@dataclass(frozen=True)
+class _ParsedTimestamp:
+    original: str
+    utc: str
+    timezone_assumed: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "original": self.original,
+            "utc": self.utc,
+            "timezone_assumed": self.timezone_assumed,
+        }
+
+
+def _format_utc(value: datetime) -> str:
+    return (
+        value.astimezone(timezone.utc)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _parse_leading_timestamp(
+    text: str,
+) -> _ParsedTimestamp | None:
+    """Parse a timestamp anchored at the start of an evidence line.
+
+    Supported, on purpose narrow - "return null rather than guess" per
+    CLAUDE.md's "Timestamps are the hard part":
+
+    - ISO 8601 (`T` or space separator, optional fractional seconds,
+      optional `Z`/`+HH:MM` offset). Missing an explicit offset means
+      UTC is assumed, not read - callers get `timezone_assumed=True`.
+    - .NET/Windows JSON date `/Date(milliseconds[+-]offset)/`, the
+      literal string some `ConvertTo-Json` exports produce for
+      DateTime fields. The millisecond value is already an absolute
+      UTC instant, so this is never "assumed".
+
+    Not supported, all because they require guessing rather than
+    reading: bare `HH:MM:SS` with no date (the exact trap that got the
+    timeline dropped - see issue #35), syslog's year-less
+    `MMM DD HH:MM:SS`, locale-ambiguous `MM/DD/YYYY`, and free-text
+    dates. A bare Unix epoch number is also not handled here: at this
+    point a line is already flattened text, so a leading integer is
+    indistinguishable from an event ID or count - matching it would be
+    exactly the kind of guess this function exists to avoid. (Where the
+    value's field name is known - a structured JSON/CSV time column -
+    epoch numbers already parse safely in log_parser.py, just not
+    surfaced on evidence yet; see the follow-up issue.)
+    """
+
+    windows_match = _WINDOWS_DATE_PATTERN.match(text)
+
+    if windows_match:
+        milliseconds = int(windows_match.group("milliseconds"))
+
+        try:
+            parsed = datetime.fromtimestamp(
+                milliseconds / 1000,
+                tz=timezone.utc,
+            )
+        except (OSError, OverflowError, ValueError):
+            return None
+
+        return _ParsedTimestamp(
+            original=windows_match.group(0),
+            utc=_format_utc(parsed),
+            timezone_assumed=False,
+        )
+
+    iso_match = _ISO_TIMESTAMP_PATTERN.match(text)
+
+    if not iso_match:
+        return None
+
+    offset = iso_match.group("offset")
+    candidate = iso_match.group("datetime") + (offset or "")
+
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return None
+
+    timezone_assumed = parsed.tzinfo is None
+
+    if timezone_assumed:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return _ParsedTimestamp(
+        original=iso_match.group(0),
+        utc=_format_utc(parsed),
+        timezone_assumed=timezone_assumed,
+    )
 
 # How often the O(n) and O(n^2) scan loops check the wall-clock deadline.
 # time.monotonic() is cheap, but there is no reason to call it every
@@ -275,18 +382,34 @@ def _find_event_blocks(
 
 def _create_evidence(
     matches: list[tuple[int, str]],
-) -> list[str]:
+) -> list[dict]:
+    # Evidence is deduped by lowercased content, so one kept entry can
+    # stand in for several source lines with the same text. We report
+    # the line number of the first occurrence: an analyst jumping to
+    # evidence wants *a* real location to start from, and the finding's
+    # `count` already says how many times it matched - a list of every
+    # duplicate's line number would just restate that count with extra
+    # steps while still capping at MAX_EVIDENCE_LINES distinct entries.
     evidence = []
     seen = set()
 
-    for _, line in matches:
+    for index, line in matches:
         comparison_value = line.lower()
 
         if comparison_value in seen:
             continue
 
         seen.add(comparison_value)
-        evidence.append(line[:MAX_EVIDENCE_LENGTH])
+        timestamp = _parse_leading_timestamp(line)
+        evidence.append(
+            {
+                "line_number": index + 1,
+                "text": line[:MAX_EVIDENCE_LENGTH],
+                "timestamp": (
+                    timestamp.to_dict() if timestamp else None
+                ),
+            }
+        )
 
         if len(evidence) == MAX_EVIDENCE_LINES:
             break
